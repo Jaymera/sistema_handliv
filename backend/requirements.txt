@@ -1,0 +1,50 @@
+# ===== Core Backend =====
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+sqlalchemy==2.0.35
+alembic==1.13.3
+PyMySQL==1.1.1
+cryptography==43.0.1
+redis==5.0.8
+celery==5.4.0
+pydantic==2.9.2
+pydantic-settings==2.5.2
+python-jose[cryptography]==3.3.0
+bcrypt==4.2.0
+python-multipart==0.0.12
+email-validator==2.2.0
+aiosmtplib==3.0.2
+httpx==0.27.2
+fakeredis>=2.0.0
+structlog==24.4.0
+python-dotenv==1.0.1
+PyYAML==6.0.2
+
+# ===== Market Data =====
+yfinance==0.2.43
+pandas>=2.2.3
+numpy>=1.26.0
+pandas-ta>=0.3.14b
+ta==0.11.0
+
+# ===== News & Sentiment =====
+feedparser==6.0.11
+vaderSentiment==3.3.2
+textblob==0.18.0
+
+# ===== Backtesting =====
+backtesting>=0.3.3
+backtrader==1.9.78.123
+
+# ===== Payments =====
+stripe==10.8.0
+
+# ===== AWS =====
+boto3==1.35.34
+
+# ===== Dev / Test =====
+pytest==8.3.3
+pytest-asyncio==0.24.0
+freezegun==1.5.1
+ruff==0.6.9
+mypy==1.11.2

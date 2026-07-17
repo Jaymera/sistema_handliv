@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Handliv Trading",
+    "slug": "handliv-trading",
+    "version": "0.1.0",
+    "scheme": "handliv",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.handliv.trading" },
+    "android": { "package": "com.handliv.trading" },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": ["expo-router"],
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "API_BASE_URL": "http://localhost:8000/api/v1",
+      "eas": { "projectId": "" }
+    }
+  }
+}

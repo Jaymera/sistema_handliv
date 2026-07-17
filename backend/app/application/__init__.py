@@ -1,0 +1,1 @@
+"""Application layer — use cases orchestrated with infrastructure."""

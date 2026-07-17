@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Docker volumes
+db_data/
+redis_data/
+uploads/*
+
+# Cache / HF models
+backend/.cache/
+backend/storage/uploads/*
+!backend/storage/uploads/.gitkeep
+
+# Frontend
+node_modules/
+.expo/
+dist/
+.web/
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp

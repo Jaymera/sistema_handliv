@@ -1,0 +1,93 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: handliv_db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: handliv
+      MYSQL_USER: handliv
+      MYSQL_PASSWORD: handliv
+      MYSQL_ROOT_PASSWORD: change_me_root
+      TZ: America/Sao_Paulo
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchange_me_root"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "3306:3306"
+
+  redis:
+    image: redis:7-alpine
+    container_name: handliv_redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    container_name: handliv_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - uploads:/app/storage/uploads
+      - hf_cache:/app/.cache/huggingface
+    ports:
+      - "8000:8000"
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"
+
+  celery_worker:
+    build: ./backend
+    container_name: handliv_celery_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - backend
+      - redis
+    volumes:
+      - ./backend:/app
+      - uploads:/app/storage/uploads
+      - hf_cache:/app/.cache/huggingface
+    command: celery -A app.infrastructure.queue.celery_app worker --loglevel=info -E
+
+  celery_beat:
+    build: ./backend
+    container_name: handliv_celery_beat
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - backend
+      - redis
+    volumes:
+      - ./backend:/app
+    command: celery -A app.infrastructure.queue.celery_app beat --loglevel=info
+
+  frontend:
+    build: ./frontend
+    container_name: handliv_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  db_data:
+  redis_data:
+  uploads:
+  hf_cache:
