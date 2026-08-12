@@ -1,24 +1,4 @@
 services:
-  db:
-    image: mysql:8.0
-    container_name: handliv_db
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: handliv
-      MYSQL_USER: handliv
-      MYSQL_PASSWORD: handliv
-      MYSQL_ROOT_PASSWORD: change_me_root
-      TZ: America/Sao_Paulo
-    volumes:
-      - db_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pchange_me_root"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    ports:
-      - "3306:3306"
-
   redis:
     image: redis:7-alpine
     container_name: handliv_redis
@@ -36,8 +16,6 @@ services:
     env_file:
       - .env
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_started
     volumes:
@@ -87,7 +65,6 @@ services:
       - "8080:80"
 
 volumes:
-  db_data:
   redis_data:
   uploads:
   hf_cache:

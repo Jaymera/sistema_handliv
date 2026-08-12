@@ -34,6 +34,18 @@ export default function ProfileScreen() {
           <Text className="text-white font-semibold">Painel Admin</Text>
         </TouchableOpacity>
       ) : null}
+      <TouchableOpacity
+        className="mt-3 bg-amber-500 px-4 py-3 rounded-md"
+        onPress={() => router.push("/trading-panel")}
+      >
+        <Text className="text-white font-semibold">Painel de Trading & MT5</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        className="mt-3 bg-neutral-200 dark:bg-neutral-800 px-4 py-3 rounded-md"
+        onPress={() => router.push("/pricing")}
+      >
+        <Text className="text-neutral-900 dark:text-white font-semibold">Ver Planos & Assinar</Text>
+      </TouchableOpacity>
     </View>
   );
 }

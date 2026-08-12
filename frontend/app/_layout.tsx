@@ -38,6 +38,7 @@ export default function RootLayout() {
         <Stack.Screen name="backtest/new" options={{ headerShown: true, title: "Backtest" }} />
         <Stack.Screen name="admin" options={{ headerShown: true, title: "Admin" }} />
         <Stack.Screen name="pricing" options={{ headerShown: false }} />
+        <Stack.Screen name="trading-panel" options={{ headerShown: true, title: "Painel de Trading" }} />
       </Stack>
     </QueryClientProvider>
   );

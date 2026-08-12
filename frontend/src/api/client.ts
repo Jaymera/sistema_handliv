@@ -189,3 +189,40 @@ export const adminApi = {
   updateWeights: (body: Record<string, unknown>) =>
     request<void>("/admin/score-weights", { method: "PUT", body: JSON.stringify(body) }),
 };
+
+export const subscriptionsApi = {
+  checkout: (planCode: string, interval?: string) =>
+    request<{ checkout_url: string | null }>(`/subscriptions/checkout?plan_code=${planCode}&interval=${interval || "monthly"}`, { method: "POST" }),
+  mySubscription: () =>
+    request<{ plan: { code: string; name: string; limits: Record<string, unknown> }; status: string; current_period_end: string | null; cancel_at_period_end: boolean }>(
+      "/subscriptions/me",
+    ),
+  cancel: () => request<void>("/subscriptions/me", { method: "DELETE" }),
+  portal: () => request<{ portal_url: string }>("/subscriptions/portal", { method: "POST" }),
+};
+
+export const featuresApi = {
+  myFeatures: () =>
+    request<{
+      plan_code: string;
+      plan_status: string;
+      payment_ok: boolean;
+      features: {
+        assets_analyzed_limit: number | null;
+        robots_indicators: boolean;
+        copy_trading: boolean;
+        live_trading_room: boolean;
+        course_discount: boolean;
+        trading_panel: boolean;
+        auto_robot: boolean;
+      };
+      links: { whatsapp: string; discord: string; cursos: string };
+    }>("/me/features"),
+};
+
+export const mt5Api = {
+  list: () => request<{ items: { id: string; account_number: string; broker: string | null; is_active: boolean }[] }>("/mt5/accounts"),
+  add: (accounts: string, broker?: string) =>
+    request<{ created: string[]; count: number }>("/mt5/accounts", { method: "POST", body: JSON.stringify({ accounts, broker }) }),
+  remove: (id: string) => request<void>(`/mt5/accounts/${id}`, { method: "DELETE" }),
+};

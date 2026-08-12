@@ -23,6 +23,7 @@ from app.infrastructure.database.models.user_assets import (
     Alert,
     AlertType,
     Favorite,
+    MT5Account,
     WatchlistItem,
 )
 from app.infrastructure.database.models.backtests import (
@@ -76,6 +77,7 @@ __all__ = [
     "Alert",
     "AlertType",
     "Favorite",
+    "MT5Account",
     "WatchlistItem",
     # Backtesting
     "Backtest",

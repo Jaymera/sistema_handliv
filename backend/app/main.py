@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.infrastructure.database.session import engine
 from app.infrastructure.database.bootstrap import bootstrap_super_admin
-from app.presentation.routers import auth, assets, watchlist, alerts, backtests, files, admin, notifications, health, plans, subscriptions, ws
+from app.presentation.routers import auth, assets, watchlist, alerts, backtests, files, admin, notifications, health, plans, subscriptions, ws, mt5
 from app.presentation.middleware.logging import LoggingMiddleware
 
 
@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(notifications.router, prefix="/api/v1", tags=["notifications"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(ws.router, prefix="/api/v1", tags=["ws"])
+    app.include_router(mt5.router, prefix="/api/v1", tags=["mt5"])
 
     return app
 

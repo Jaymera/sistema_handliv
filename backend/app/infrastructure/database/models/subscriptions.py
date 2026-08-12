@@ -18,8 +18,8 @@ def _uuid() -> uuid.UUID:
 
 class PlanCode(StrEnum):
     FREE = "free"
-    PRO = "pro"
-    PREMIUM = "premium"
+    START = "start"
+    ULTIMATE = "ultimate"
 
 
 class Plan(Base, TimestampMixin):
@@ -28,6 +28,7 @@ class Plan(Base, TimestampMixin):
     id: Mapped[uuid.UUID] = mapped_column(CHAR(36, charset="ascii"), primary_key=True, default=_uuid)
     code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
+    stripe_product_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     stripe_price_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     price_monthly_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     price_yearly_cents: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -57,7 +58,7 @@ class Subscription(Base, TimestampMixin):
     stripe_customer_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[SubscriptionStatus] = mapped_column(
-        Enum(SubscriptionStatus), default=SubscriptionStatus.ACTIVE, nullable=False
+        Enum(SubscriptionStatus, values_callable=lambda x: [e.value for e in x]), default=SubscriptionStatus.ACTIVE, nullable=False
     )
     current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_at_period_end: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

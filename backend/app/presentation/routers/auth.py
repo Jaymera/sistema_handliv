@@ -20,6 +20,7 @@ from app.domain.security import (
 from app.infrastructure.database.models import (
     PasswordReset,
     RefreshToken,
+    Role,
     Subscription,
     SubscriptionStatus,
     User,
@@ -116,6 +117,14 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid credentials")
     if not user.is_active or user.deleted_at is not None:
         raise HTTPException(status.HTTP_423_LOCKED, "account suspended")
+
+    # Verificar pagamento (exceto super_admin)
+    if user.role != Role.SUPER_ADMIN:
+        from app.presentation.routers.subscriptions import check_user_plan
+        plan_info = check_user_plan(db, user)
+        if not plan_info["payment_ok"]:
+            raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Pagamento atrasado. Regularize sua assinatura para continuar.")
+
     user.last_login_at = datetime.now(timezone.utc)
     access, refresh = _emit_tokens(db, user, device_info=request.headers.get("user-agent"))
     db.commit()

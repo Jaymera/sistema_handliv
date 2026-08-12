@@ -28,9 +28,17 @@ class Settings(BaseSettings):
     stripe_secret_key: SecretStr = SecretStr("")
     stripe_publishable_key: SecretStr = SecretStr("")
     stripe_webhook_secret: SecretStr = SecretStr("")
+    stripe_product_free: str = ""
+    stripe_product_start: str = ""
+    stripe_product_ultimate: str = ""
     stripe_price_free: str = ""
     stripe_price_pro: str = ""
     stripe_price_premium: str = ""
+
+    # Links externos
+    whatsapp_url: str = "https://wa.me/551152866453"
+    discord_url: str = "https://discord.com/invite/6X3MamvS5T"
+    cursos_url: str = "https://handliv.kpages.online/cursos"
 
     # Super Admin bootstrap
     admin_name: str = "Handliv"
