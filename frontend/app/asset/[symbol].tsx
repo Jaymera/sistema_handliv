@@ -2,7 +2,8 @@ import "../../src/global.css";
 
 import { useLocalSearchParams, router } from "expo-router";
 import { ActivityIndicator, Dimensions, Pressable, ScrollView, Text, View } from "react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { LineChart } from "react-native-chart-kit";
 
 import { assetsApi, watchlistApi } from "@/api/client";
@@ -12,6 +13,8 @@ const screenWidth = Dimensions.get("window").width;
 export default function AssetScreen() {
   const { symbol } = useLocalSearchParams<{ symbol: string }>();
   const sym = decodeURIComponent(symbol ?? "");
+  const qc = useQueryClient();
+  const [wlMsg, setWlMsg] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["live-analysis", sym],
@@ -19,10 +22,28 @@ export default function AssetScreen() {
     enabled: Boolean(sym),
   });
 
-  const addToWatchlist = async () => {
+  const { data: watchlist } = useQuery({
+    queryKey: ["watchlist"],
+    queryFn: watchlistApi.list,
+  });
+
+  const isStarred = (watchlist as { asset: { symbol: string } }[] | undefined)?.some(
+    (w) => w.asset.symbol === sym,
+  ) ?? false;
+
+  const toggleWatchlist = async () => {
+    setWlMsg(null);
     try {
-      await watchlistApi.add(sym);
-    } catch {}
+      if (isStarred) await watchlistApi.remove(sym);
+      else await watchlistApi.add(sym);
+      setWlMsg(isStarred ? "Removido da watchlist" : "Adicionado à watchlist ⭐");
+      qc.invalidateQueries({ queryKey: ["watchlist"] });
+      setTimeout(() => setWlMsg(null), 2500);
+    } catch (e: any) {
+      const msg = e?.message ?? "Não foi possível atualizar a watchlist";
+      setWlMsg(msg === "already in watchlist" ? "Ativo já está na watchlist" : msg);
+      setTimeout(() => setWlMsg(null), 3000);
+    }
   };
 
   if (isLoading) {
@@ -241,11 +262,25 @@ export default function AssetScreen() {
       )}
 
       {/* Actions */}
-      <View className="flex-row gap-3 mb-8">
-        <Pressable className="flex-1 bg-blue-600 px-4 py-3 rounded-xl items-center" onPress={addToWatchlist}>
-          <Text className="text-white font-semibold">＋ Watchlist</Text>
+      <View className="gap-2 mb-8">
+        <Pressable
+          className={`px-4 py-3 rounded-xl items-center ${isStarred ? "" : ""}`}
+          style={{ backgroundColor: isStarred ? "#f59e0b" : "#2563eb" }}
+          onPress={toggleWatchlist}
+        >
+          <Text className="text-white font-semibold">
+            {isStarred ? "★ Remover da Watchlist" : "＋ Adicionar à Watchlist"}
+          </Text>
         </Pressable>
-        <Pressable className="flex-1 bg-neutral-200 dark:bg-neutral-800 px-4 py-3 rounded-xl items-center" onPress={() => router.back()}>
+        {wlMsg ? (
+          <Text
+            className="text-center text-sm font-medium"
+            style={{ color: wlMsg.startsWith("Adicionado") || wlMsg.startsWith("Removido") ? "#16a34a" : "#dc2626" }}
+          >
+            {wlMsg}
+          </Text>
+        ) : null}
+        <Pressable className="bg-neutral-200 dark:bg-neutral-800 px-4 py-3 rounded-xl items-center" onPress={() => router.back()}>
           <Text className="text-neutral-900 dark:text-white font-semibold">← Voltar</Text>
         </Pressable>
       </View>

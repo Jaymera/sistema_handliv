@@ -538,6 +538,89 @@ docker compose up -d --build
 
 Mesmo sem DB/Redis disponíveis, o backend sobe e responde em `/api/v1/health` (bootstrap do Super Admin falha graciosamente e tenta novamente via job imprevisível).
 
+---
+
+## 15. Instalação e Deploy (Guia Operacional)
+
+> Guia validado em produção (EasyPanel v2.26+). Dois caminhos: **rodar localmente** (Docker ou dev separado) e **deploy no EasyPanel**.
+
+### 15.1 Execução local (Docker — recomendado)
+
+**Pré-requisitos:** Docker + Docker Compose, Node 20+ (só para build do frontend).
+
+```bash
+# 1. Clone e configure
+git clone https://github.com/Jaymera/sistema_handliv.git
+cd saas_mercado_financeiro
+cp .env.example .env      # preencha DATABASE_URL, REDIS_URL, JWT_SECRET, Stripe, ADMIN_*
+
+# 2. Suba todos os serviços
+docker compose up -d --build
+
+# 3. Verifique
+curl http://localhost:8000/api/v1/health        # {"status":"ok"}
+open http://localhost:8000/docs                 # Swagger
+open http://localhost:8080                      # Frontend web (Expo)
+```
+
+Serviços: `backend` (FastAPI), `frontend` (Expo web), `celery_worker`, `celery_beat`, `redis`. As migrations (`alembic upgrade head`) rodam no startup do backend. O Super Admin `Handliv / <ADMIN_PASSWORD>` é criado automaticamente.
+
+### 15.2 Execução local (modo desenvolvimento, sem Docker)
+
+**Backend**
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+# em outro terminal:
+celery -A app.worker worker -l info
+celery -A app.worker beat -l info
+```
+
+**Frontend**
+```bash
+cd frontend
+npm install
+npm run web            # ou npx expo start
+```
+
+> No dev separado, o frontend usa `http://localhost:8000/api/v1` como base (ver `frontend/src/api/client.ts`). Em produção, ele usa o proxy `/api/v1` do próprio nginx.
+
+### 15.3 Deploy no EasyPanel (produção)
+
+Setup validado em produção com um único compose (tipo **Compose**) e domínios `app.handliv.com` (frontend) + `api.handliv.com` (backend).
+
+1. **Crie o projeto** no EasyPanel com tipo **Compose**; conecte o repositório GitHub `sistema_handliv` (o painel puxa `docker-compose.yml` da raiz, branch `main`).
+2. **Variáveis de ambiente** do serviço `saas_handliv`: copie as do `.env` (Stripe, MySQL, JWT, Redis, `ADMIN_*`, URLs de Recursos: `WHATSAPP_URL`, `DISCORD_URL`, `CURSOS_URL`, `COPY_TRADING_URL`, `ROBOTS_INDICATORS_URL`, `TRADING_PANEL_URL`, `AUTO_ROBOT_URL`).
+3. **MySQL**: crie um serviço MySQL no EasyPanel (ou externo) e aponte `DATABASE_URL`. Migrations rodam no startup.
+4. **Redis**: já é o serviço `redis` do compose (interno).
+5. **Domínios (crítico — origem do 502)**:
+   - `app.handliv.com` → `composeService: frontend`, porta `80`
+   - `api.handliv.com` → `composeService: backend`, porta `8000`
+   - Se o `composeService` ficar `null`, o traefik roteia para `site_<projeto>_<serviço>_undefined` → **502**. Edite o domínio e redeploy.
+6. **HTTPS** automático (Let's Encrypt) no painel.
+7. **Webhook Stripe**: configure `https://api.handliv.com/api/v1/subscriptions/webhook` com o `whsec_*` real do modo live.
+
+**Verificação pós-deploy**
+```bash
+curl https://api.handliv.com/api/v1/health      # {"status":"ok"}
+curl -I https://app.handliv.com/                # HTTP 200 (SPA)
+```
+
+**Regra de ouro do EasyPanel**: só o que está **commitado e pushado no GitHub** vai para produção. Qualquer arquivo novo (ex.: novo módulo backend) precisa de commit + push antes do "Redeploy".
+
+### 15.4 Troubleshooting
+
+| Sintoma | Causa provável | Correção |
+|---|---|---|
+| 502 no domínio | `composeService` nulo no domínio do EasyPanel | Editar domínio apontando para `frontend`/`backend` + redeploy |
+| Containers não acham o serviço | override gerado com `services: {}` | Redeploy do serviço no painel |
+| `ModuleNotFoundError` no celery/worker | arquivo novo não commitado | `git add -A && git commit && git push` + redeploy |
+| Webhook Stripe não ativa plano | `whsec_*` placeholder | Preencher `STRIPE_WEBHOOK_SECRET` real + registrar URL |
+| Watchlist travada em 5 itens | plano antigo sem `watchlist` no `limits_json` | Redeploy para rodar bootstrap que atualiza planos |
+
 ### Próximos passos sugeridos
 - Conectar a um MySQL real, rodar `alembic upgrade head`, e validar o bootstrap do Super Admin `Handliv / samsung12` (trocar senha no 1º login)
 - Configurar chaves Stripe em modo `test` e validar fluxo checkout → webhook → ativação de plano

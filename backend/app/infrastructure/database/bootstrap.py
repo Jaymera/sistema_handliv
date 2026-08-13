@@ -29,6 +29,7 @@ DEFAULT_PLANS = [
             "auto_robot": False,
             "markets": "all",
             "history_days": 30,
+            "watchlist": 5,
         },
     },
     {
@@ -47,6 +48,7 @@ DEFAULT_PLANS = [
             "auto_robot": False,
             "markets": "all",
             "history_days": 365,
+            "watchlist": 50,
         },
     },
     {
@@ -65,6 +67,7 @@ DEFAULT_PLANS = [
             "auto_robot": True,
             "markets": "all",
             "history_days": None,
+            "watchlist": 999999,
         },
     },
 ]
