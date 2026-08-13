@@ -63,7 +63,7 @@ export default function LoginScreen() {
       </Pressable>
       <Pressable
         className="mt-4 bg-amber-500 px-4 py-3 rounded-md items-center"
-        onPress={() => router.push("/pricing")}
+        onPress={() => { if (typeof window !== "undefined") window.open("https://handliv.com", "_blank"); }}
       >
         <Text className="text-white font-semibold">Ver Planos & Preços</Text>
       </Pressable>

@@ -21,7 +21,7 @@ PRODUCT_BY_CODE = {
 
 
 @router.post("/subscriptions/checkout")
-def create_checkout(plan_code: str, interval: str = "monthly", user: User = Depends(get_current_user)) -> dict:
+def create_checkout(plan_code: str, interval: str = "monthly", user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     if plan_code == "free":
         return {"checkout_url": None, "message": "Plano Free não precisa de pagamento"}
     product_id = PRODUCT_BY_CODE.get(plan_code)
@@ -43,10 +43,12 @@ def create_checkout(plan_code: str, interval: str = "monthly", user: User = Depe
         session = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price.id, "quantity": 1}],
-            success_url="https://app.handliv.com/billing?status=success",
-            cancel_url="https://app.handliv.com/billing?status=cancel",
+            success_url="https://handliv.com/billing?status=success",
+            cancel_url="https://handliv.com/billing?status=cancel",
             client_reference_id=str(user.id),
+            customer_email=user.email,
             metadata={"user_id": str(user.id), "plan_code": plan_code},
+            subscription_data={"metadata": {"user_id": str(user.id), "plan_code": plan_code}},
         )
         return {"checkout_url": session.url}
     except HTTPException:
@@ -162,11 +164,43 @@ def cancel_subscription(user: User = Depends(get_current_user), db: Session = De
 
 
 def check_user_plan(db: Session, user: User) -> dict:
-    """Verifica o plano do usuário. Retorna {code, limits, status, payment_ok}."""
+    """Verifica o plano do usuário. Retorna {code, limits, status, payment_ok}.
+    Se houver stripe_subscription_id, consulta a Stripe em tempo real para confirmar o pagamento.
+    """
     sub = db.scalar(select(Subscription).where(Subscription.user_id == user.id))
     if not sub:
         plan = db.scalar(select(Plan).where(Plan.code == "free"))
         return {"code": "free", "limits": plan.limits_json if plan else {}, "status": "active", "payment_ok": True}
+
+    # Fallback: se não houve webhook, consulta Stripe em tempo real
+    if sub.stripe_subscription_id and settings.stripe_secret_key.get_secret_value():
+        try:
+            import stripe
+            stripe.api_key = settings.stripe_secret_key.get_secret_value()
+            stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
+            # Mapear status do Stripe para nosso enum
+            stripe_status = stripe_sub.status
+            from datetime import datetime, timezone
+            if stripe_status == "active":
+                sub.status = SubscriptionStatus.ACTIVE
+            elif stripe_status == "trialing":
+                sub.status = SubscriptionStatus.TRIALING
+            elif stripe_status in ("past_due", "unpaid"):
+                sub.status = SubscriptionStatus.PAST_DUE
+            elif stripe_status in ("canceled", "incomplete_expired"):
+                sub.status = SubscriptionStatus.CANCELED
+            # Atualizar período
+            if stripe_sub.current_period_end:
+                sub.current_period_end = datetime.fromtimestamp(stripe_sub.current_period_end, tz=timezone.utc)
+            # Descobrir o plano pelo produto do Stripe
+            if stripe_sub.plan and stripe_sub.plan.product:
+                plan = db.scalar(select(Plan).where(Plan.stripe_product_id == stripe_sub.plan.product))
+                if plan:
+                    sub.plan_id = plan.id
+            db.commit()
+        except Exception:
+            pass  # Se falhar, continua com o que tem no banco
+
     payment_ok = sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING)
     if sub.status == SubscriptionStatus.PAST_DUE:
         payment_ok = False

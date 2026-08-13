@@ -42,7 +42,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
       <TouchableOpacity
         className="mt-3 bg-neutral-200 dark:bg-neutral-800 px-4 py-3 rounded-md"
-        onPress={() => router.push("/pricing")}
+        onPress={() => { if (typeof window !== "undefined") window.open("https://handliv.com", "_blank"); }}
       >
         <Text className="text-neutral-900 dark:text-white font-semibold">Ver Planos & Assinar</Text>
       </TouchableOpacity>

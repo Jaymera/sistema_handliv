@@ -18,6 +18,7 @@ from app.infrastructure.database.models import (
 )
 from app.infrastructure.database.session import get_db
 from app.infrastructure.providers.market_data import provider as market_data
+from app.presentation.deps.auth import get_current_user
 
 router = APIRouter()
 
@@ -231,9 +232,29 @@ def get_score(symbol: str, db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.get("/assets/{symbol}/live-analysis")
-def live_analysis(symbol: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_current_user)) -> dict[str, Any]:
     """Compute a live analysis (score, indicators, fundamentals, recommendation) on the fly."""
     asset = _get_asset_by_symbol(db, symbol)
+
+    # Verificar limite de ativos analisados (não se aplica a super_admin)
+    if user.role.value != "super_admin":
+        from app.presentation.routers.subscriptions import check_user_plan
+        plan_info = check_user_plan(db, user)
+        limit = plan_info["limits"].get("assets_analyzed")
+        if limit:
+            from app.infrastructure.cache import cache
+            key = f"analyzed_assets:{user.id}"
+            try:
+                analyzed = cache.client.smembers(key) or set()
+                if asset.symbol not in analyzed:
+                    if len(analyzed) >= limit:
+                        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Limite de {limit} ativos atingido. Faça upgrade do plano.")
+                    cache.client.sadd(key, asset.symbol)
+                    cache.client.expire(key, 86400)
+            except HTTPException:
+                raise
+            except Exception:
+                pass
 
     # --- Market data ---
     bars = market_data.fetch_history(asset.symbol, timeframe="1d", period="6mo")

@@ -21,7 +21,7 @@ python-dotenv==1.0.1
 PyYAML==6.0.2
 
 # ===== Market Data =====
-yfinance==0.2.43
+yfinance>=0.2.40
 pandas>=2.2.3
 numpy>=1.26.0
 pandas-ta>=0.3.14b

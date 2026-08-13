@@ -161,7 +161,7 @@ export default function DashboardScreen() {
         </Pressable>
         <Pressable
           className="px-4 bg-amber-500 rounded-xl py-3 items-center"
-          onPress={() => router.push("/pricing")}
+          onPress={() => { if (typeof window !== "undefined") window.open("https://handliv.com", "_blank"); }}
         >
           <Text className="text-white font-semibold">Assinar</Text>
         </Pressable>

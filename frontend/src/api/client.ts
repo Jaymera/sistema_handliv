@@ -181,13 +181,21 @@ export const filesApi = {
 };
 
 export const adminApi = {
-  users: () => request<{ items: unknown[] }>("/admin/users"),
+  users: () => request<{
+    items: {
+      id: string; name: string; email: string; is_active: boolean; role: string;
+      plan_code: string; plan_name: string; subscription_status: string;
+      created_at: string | null; last_login_at: string | null;
+    }[];
+  }>("/admin/users"),
   logs: () => request<{ items: unknown[] }>("/admin/logs"),
   weights: () => request<{ technical_weight: number; valuation_weight: number; sentiment_weight: number; min_confidence: number }>(
     "/admin/score-weights",
   ),
   updateWeights: (body: Record<string, unknown>) =>
     request<void>("/admin/score-weights", { method: "PUT", body: JSON.stringify(body) }),
+  patchUser: (userId: string, body: { is_active?: boolean; plan_code?: string }) =>
+    request<void>(`/admin/users/${userId}`, { method: "PATCH", body: JSON.stringify(body) }),
 };
 
 export const subscriptionsApi = {
@@ -216,7 +224,7 @@ export const featuresApi = {
         trading_panel: boolean;
         auto_robot: boolean;
       };
-      links: { whatsapp: string; discord: string; cursos: string };
+      links: { whatsapp: string; discord: string; cursos: string; copy_trading: string; robots_indicators: string; trading_panel: string; auto_robot: string };
     }>("/me/features"),
 };
 
@@ -225,4 +233,11 @@ export const mt5Api = {
   add: (accounts: string, broker?: string) =>
     request<{ created: string[]; count: number }>("/mt5/accounts", { method: "POST", body: JSON.stringify({ accounts, broker }) }),
   remove: (id: string) => request<void>(`/mt5/accounts/${id}`, { method: "DELETE" }),
+};
+
+export const tradesApi = {
+  list: () => request<{ items: { id: string; asset_symbol: string; result_pct: number; note: string | null; created_at: string | null }[] }>("/trades"),
+  add: (body: { asset_symbol: string; result_pct: number; note?: string }) =>
+    request<{ id: string; status: string }>("/trades", { method: "POST", body: JSON.stringify(body) }),
+  remove: (id: string) => request<void>(`/trades/${id}`, { method: "DELETE" }),
 };

@@ -24,28 +24,33 @@ class ScoreWeightsUpdate(BaseModel):
 
 
 @router.get("/users")
-def list_users(q: str = "", page: int = 1, limit: int = 20, admin=Depends(require_super_admin), db: Session = Depends(get_db)) -> dict:
-    from app.infrastructure.database.models import Subscription
+def list_users(q: str = "", page: int = 1, limit: int = 100, admin=Depends(require_super_admin), db: Session = Depends(get_db)) -> dict:
+    from app.infrastructure.database.models import Subscription, SubscriptionStatus
 
     stmt = select(User).where(User.deleted_at.is_(None))
     if q:
         q_upper = q.upper()
         stmt = stmt.where(User.email.ilike(f"%{q_upper}%") | User.name.ilike(f"%{q_upper}%"))
     users = db.scalars(stmt.offset((page - 1) * limit).limit(limit)).all()
-    return {
-        "items": [
-            {
-                "id": u.id,
-                "name": u.name,
-                "email": u.email,
-                "is_active": u.is_active,
-                "role": u.role.value,
-                "created_at": u.created_at.isoformat(),
-                "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
-            }
-            for u in users
-        ]
-    }
+    items = []
+    for u in users:
+        sub = db.scalar(select(Subscription).where(Subscription.user_id == u.id))
+        plan_code = sub.plan.code if sub and sub.plan else "free"
+        plan_name = sub.plan.name if sub and sub.plan else "Free"
+        sub_status = sub.status.value if sub else "active"
+        items.append({
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+            "is_active": u.is_active,
+            "role": u.role.value,
+            "plan_code": plan_code,
+            "plan_name": plan_name,
+            "subscription_status": sub_status,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "last_login_at": u.last_login_at.isoformat() if u.last_login_at else None,
+        })
+    return {"items": items}
 
 
 class UserPatch(BaseModel):

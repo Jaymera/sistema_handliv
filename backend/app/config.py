@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     whatsapp_url: str = "https://wa.me/551152866453"
     discord_url: str = "https://discord.com/invite/6X3MamvS5T"
     cursos_url: str = "https://handliv.kpages.online/cursos"
+    copy_trading_url: str = "https://wa.me/551152866453"
+    robots_indicators_url: str = "https://wa.me/551152866453"
+    trading_panel_url: str = "https://app.handliv.com/trading-panel"
+    auto_robot_url: str = "https://wa.me/551152866453"
 
     # Super Admin bootstrap
     admin_name: str = "Handliv"
