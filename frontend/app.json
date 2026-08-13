@@ -17,7 +17,7 @@
     "plugins": ["expo-router"],
     "experiments": { "typedRoutes": true },
     "extra": {
-      "API_BASE_URL": "http://localhost:8000/api/v1",
+      "API_BASE_URL": "/api/v1",
       "eas": { "projectId": "" }
     }
   }
