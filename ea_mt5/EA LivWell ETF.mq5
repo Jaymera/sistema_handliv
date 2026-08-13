@@ -2506,39 +2506,39 @@ int OnInit()
 
    
    //macd_handle       = iMACD(_Symbol,_Period,MARAPIDAMACD,MALENTAMACD,PERIODOMACD,PRICE_CLOSE);
-   //--- CRIANDO INDICADOR MACD
-   handlemacd = iCustom(_Symbol, PERIOD_CURRENT, "::Indicators\\macd_histogram.ex5", MARAPIDAMACD, MALENTAMACD, PERIODOMACD, TIPOPRECOMACD);
+//   //--- CRIANDO INDICADOR MACD
+//   handlemacd = iCustom(_Symbol, PERIOD_CURRENT, "::Indicators\\macd_histogram.ex5", MARAPIDAMACD, MALENTAMACD, PERIODOMACD, TIPOPRECOMACD);
+//   
+//   //IndicatorHandle = iADX(_Symbol,PERIOD_CURRENT, 20);
+//   stoch_handle = iStochastic(_Symbol, PERIOD_CURRENT, stoch_period_k, stoch_period_d, stoch_slowing, stoch_method, stoch_price);
+//   //SAR_HANDLE = iSAR(_Symbol,PERIOD_CURRENT,0.01,0.09);
+//   atr_Handle = iATR(_Symbol, PERIOD_CURRENT, 14);
+//   
+//   //mm_custom_handle  = iMA(_Symbol,mm_tempo_grafico,mm_media_periodo,0,mm_metodo,mm_preco_1);
+//   //ifr_Handle = iRSI(_Symbol,ifr_tempo_grafico,ifr_periodo,ifr_preco);
+//   
+//   //mm_rapida_handle  = iMA(_Symbol,mm_tempo_grafico,mm_rapida_periodo,0,mm_metodo,atr_Handle);
+//   mm_media_handle  = iMA(_Symbol,mm_tempo_grafico,mm_media_periodo,0,mm_metodo,mm_preco_1);
+//   mm_lenta_handle   = iMA(_Symbol,mm_tempo_grafico,mm_lenta_periodo,0,mm_metodo,mm_preco_2);
+//   mm_swing_handle   = iMA(_Symbol,mm_tempo_grafico,mm_swing_periodo,0,mm_metodo,mm_preco_3);
+//   handle_media2 = iMA(_Symbol,PERIOD_CURRENT,periodomedia2,0,mediametodo2,precomedia2);
+//   handle_media3 = iMA(_Symbol,PERIOD_CURRENT,periodomedia3,0,mediametodo3,precomedia3);
+//   
+//   handle_volume = iVolumes(_Symbol,PERIOD_CURRENT, VOLUME_TICK);
+//   handle_media4 = iMA(_Symbol,PERIOD_CURRENT,20,0,mediametodo2,handle_volume);
+//   
+//   if(ativar_heiken)
+//      heiken_ashi_handle = iCustom(_Symbol,PERIOD_CURRENT,"Examples\\Heiken_Ashi");
    
-   //IndicatorHandle = iADX(_Symbol,PERIOD_CURRENT, 20);
-   stoch_handle = iStochastic(_Symbol, PERIOD_CURRENT, stoch_period_k, stoch_period_d, stoch_slowing, stoch_method, stoch_price);
-   //SAR_HANDLE = iSAR(_Symbol,PERIOD_CURRENT,0.01,0.09);
-   atr_Handle = iATR(_Symbol, PERIOD_CURRENT, 14);
-   
-   //mm_custom_handle  = iMA(_Symbol,mm_tempo_grafico,mm_media_periodo,0,mm_metodo,mm_preco_1);
-   //ifr_Handle = iRSI(_Symbol,ifr_tempo_grafico,ifr_periodo,ifr_preco);
-   
-   //mm_rapida_handle  = iMA(_Symbol,mm_tempo_grafico,mm_rapida_periodo,0,mm_metodo,atr_Handle);
-   mm_media_handle  = iMA(_Symbol,mm_tempo_grafico,mm_media_periodo,0,mm_metodo,mm_preco_1);
-   mm_lenta_handle   = iMA(_Symbol,mm_tempo_grafico,mm_lenta_periodo,0,mm_metodo,mm_preco_2);
-   mm_swing_handle   = iMA(_Symbol,mm_tempo_grafico,mm_swing_periodo,0,mm_metodo,mm_preco_3);
-   handle_media2 = iMA(_Symbol,PERIOD_CURRENT,periodomedia2,0,mediametodo2,precomedia2);
-   handle_media3 = iMA(_Symbol,PERIOD_CURRENT,periodomedia3,0,mediametodo3,precomedia3);
-   
-   handle_volume = iVolumes(_Symbol,PERIOD_CURRENT, VOLUME_TICK);
-   handle_media4 = iMA(_Symbol,PERIOD_CURRENT,20,0,mediametodo2,handle_volume);
-   
-   if(ativar_heiken)
-      heiken_ashi_handle = iCustom(_Symbol,PERIOD_CURRENT,"Examples\\Heiken_Ashi");
-   
-   handle_supply = iCustom(_Symbol, _Period, "::Indicators\\LivWell Indicators.ex5", PERIOD_CURRENT, back_limit, history_mode, "", show_weak_zones, show_untested_zones, show_broken_zones,  zone_atr_factor, zone_merge, zone_extend, fractal_fast_factor, fractal_slow_factor);
-   if(handle_supply == INVALID_HANDLE)
-   {
-      MessageBox("Erro ao obter informações do indicador");
-      Print("Erro ao obter informações do indicador");
-      return INIT_FAILED;
-   }
-   else
-      ChartIndicatorAdd(0, 0, handle_supply);
+   //handle_supply = iCustom(_Symbol, _Period, "::Indicators\\LivWell Indicators.ex5", PERIOD_CURRENT, back_limit, history_mode, "", show_weak_zones, show_untested_zones, show_broken_zones,  zone_atr_factor, zone_merge, zone_extend, fractal_fast_factor, fractal_slow_factor);
+   //if(handle_supply == INVALID_HANDLE)
+   //{
+   //   MessageBox("Erro ao obter informações do indicador");
+   //   Print("Erro ao obter informações do indicador");
+   //   return INIT_FAILED;
+   //}
+   //else
+   //   ChartIndicatorAdd(0, 0, handle_supply);
    
    //handle_iCustom=iCustom(_Symbol,Period(),"Examples\\ZigZag");
    
@@ -2547,53 +2547,53 @@ int OnInit()
    
    
    
-   if(stoch_handle < 0 || mm_media_handle < 0|| mm_lenta_handle < 0 || handlemacd < 0)//|| mm_media_handle < 0 ||mm_rapida_handle < 0 || mm_lenta_handle < 0 ||  ifr_Handle < 0 || IndicatorHandle < 0 || 
-     {
-      Alert("Erro ao tentar criar handles para o indicador - erro: ",GetLastError());
-      return(-1);
-     }
-   if(estrategia == LIVWELL)  
-      if(!ChartIndicatorAdd(0, 0, heiken_ashi_handle))
-           PrintFormat("Falha ao adicionar o indicador Heiken Ashi %d na janela do gráfico. Código de erro %d",
-                       0, GetLastError());
-                    
-//   if(!ChartIndicatorAdd(0, 0, mm_rapida_handle))
-//        PrintFormat("Falha ao adicionar o indicador MA RAPIDA %d na janela do gráfico. Código de erro %d",
-//                    0, GetLastError());
+//   if(stoch_handle < 0 || mm_media_handle < 0|| mm_lenta_handle < 0 || handlemacd < 0)//|| mm_media_handle < 0 ||mm_rapida_handle < 0 || mm_lenta_handle < 0 ||  ifr_Handle < 0 || IndicatorHandle < 0 || 
+//     {
+//      Alert("Erro ao tentar criar handles para o indicador - erro: ",GetLastError());
+//      return(-1);
+//     }
+//   if(estrategia == LIVWELL)  
+//      if(!ChartIndicatorAdd(0, 0, heiken_ashi_handle))
+//           PrintFormat("Falha ao adicionar o indicador Heiken Ashi %d na janela do gráfico. Código de erro %d",
+//                       0, GetLastError());
 //                    
-//   if(!ChartIndicatorAdd(0, 0, mm_media_handle))
-//        PrintFormat("Falha ao adicionar o indicador MA MÉDIA %d na janela do gráfico. Código de erro %d",
-//                    0, GetLastError());
-//                    
-   //if(!ChartIndicatorAdd(0, 0, handle_iCustom))
-   //     PrintFormat("Falha ao adicionar o indicador ZigZag %d na janela do gráfico. Código de erro %d",
-   //                 0, GetLastError());
-     
-  CopyRates(_Symbol,_Period,0,5,velas);
-  ArraySetAsSeries(velas,true);
-   
-//--- Ordenar os vetores de dados
-   //ArraySetAsSeries(macd_buffer,true);
-   //ArraySetAsSeries(mm_rapida_buffer,true);
-   //ArraySetAsSeries(mm_custom_buffer,true);
-   ArraySetAsSeries(mm_media_buffer,true);
-   ArraySetAsSeries(mm_lenta_buffer,true);
-   ArraySetAsSeries(mm_swing_buffer,true);
-   //ArraySetAsSeries(ifr_Buffer,true);
-   ArraySetAsSeries(stoch,true);
-   //ArraySetAsSeries(fractalHighVal, true);
-   //ArraySetAsSeries(fractalLowVal, true);
-   ArraySetAsSeries(buffer_media2,true); 
-   ArraySetAsSeries(buffer_media3,true); 
-   ArraySetAsSeries(buffer_media4,true); 
-   ArraySetAsSeries(buffer_volume,true); 
-   
-   //ArraySetAsSeries(adx_line,true);   
-   //ArraySetAsSeries(adx_plus_di,true);  
-   //ArraySetAsSeries(adx_minus_di,true);
-   //ArraySetAsSeries(SAR, true);
-   ArraySetAsSeries(atr_Buffer, true);
-   
+////   if(!ChartIndicatorAdd(0, 0, mm_rapida_handle))
+////        PrintFormat("Falha ao adicionar o indicador MA RAPIDA %d na janela do gráfico. Código de erro %d",
+////                    0, GetLastError());
+////                    
+////   if(!ChartIndicatorAdd(0, 0, mm_media_handle))
+////        PrintFormat("Falha ao adicionar o indicador MA MÉDIA %d na janela do gráfico. Código de erro %d",
+////                    0, GetLastError());
+////                    
+//   //if(!ChartIndicatorAdd(0, 0, handle_iCustom))
+//   //     PrintFormat("Falha ao adicionar o indicador ZigZag %d na janela do gráfico. Código de erro %d",
+//   //                 0, GetLastError());
+//     
+//  CopyRates(_Symbol,_Period,0,5,velas);
+//  ArraySetAsSeries(velas,true);
+//   
+////--- Ordenar os vetores de dados
+//   //ArraySetAsSeries(macd_buffer,true);
+//   //ArraySetAsSeries(mm_rapida_buffer,true);
+//   //ArraySetAsSeries(mm_custom_buffer,true);
+//   ArraySetAsSeries(mm_media_buffer,true);
+//   ArraySetAsSeries(mm_lenta_buffer,true);
+//   ArraySetAsSeries(mm_swing_buffer,true);
+//   //ArraySetAsSeries(ifr_Buffer,true);
+//   ArraySetAsSeries(stoch,true);
+//   //ArraySetAsSeries(fractalHighVal, true);
+//   //ArraySetAsSeries(fractalLowVal, true);
+//   ArraySetAsSeries(buffer_media2,true); 
+//   ArraySetAsSeries(buffer_media3,true); 
+//   ArraySetAsSeries(buffer_media4,true); 
+//   ArraySetAsSeries(buffer_volume,true); 
+//   
+//   //ArraySetAsSeries(adx_line,true);   
+//   //ArraySetAsSeries(adx_plus_di,true);  
+//   //ArraySetAsSeries(adx_minus_di,true);
+//   //ArraySetAsSeries(SAR, true);
+//   ArraySetAsSeries(atr_Buffer, true);
+//   
    
   
   //ChartIndicatorAdd(0,0,mm_rapida_handle);
@@ -4806,7 +4806,7 @@ void vencimento2()
    
    string cookie=NULL,headers;
    char   post[],result[];
-   string url=handliv_api_url+"/mt5/ea/status?account="+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"&token="+handliv_api_token;
+   string url=handliv_api_url+"/mt5/ea/status?account="+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN));
 //--- To enable access to the server, you should add URL "https://api.handliv.com"
 //--- to the list of allowed URLs (Main Menu->Tools->Options, tab "Expert Advisors"):
 //--- Resetting the last error code

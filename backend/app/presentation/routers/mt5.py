@@ -13,8 +13,14 @@ from app.presentation.routers.subscriptions import check_user_plan
 router = APIRouter()
 
 
-def _require_ea_token(token: str) -> None:
-    """Autentica chamadas do Expert Advisor via MT5_API_TOKEN (compartilhado)."""
+def _require_ea_token(token: str | None) -> None:
+    """Autentica chamadas do Expert Advisor via MT5_API_TOKEN (compartilhado).
+
+    Token opcional: só valida se for enviado. Sem token, a conta é
+    identificada pelo próprio account_number (retorno sem dados sensíveis).
+    """
+    if token is None or token == "":
+        return
     expected = settings.mt5_api_token.get_secret_value()
     if not expected or token != expected:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid mt5 token")
@@ -23,7 +29,7 @@ def _require_ea_token(token: str) -> None:
 @router.get("/mt5/ea/status")
 def ea_account_status(
     account: str = Query(...),
-    token: str = Query(...),
+    token: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> dict:
     """Endpoint público para o EA verificar se a conta MT5 está cadastrada e ativa.
