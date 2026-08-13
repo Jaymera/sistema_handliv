@@ -2211,10 +2211,10 @@ input color                infopanel_pause_color = C'39,174,96';                
 input color                infopanel_close_color = C'236,28,37';                 //ᅟ→ᅟColor - Reset Button
 input string               trade_comment = "Handliv";                            //ᅟ→ᅟComment (Operation Text)ᅟ
 
-input group                "???   HANDLIV API"
-input string               handliv_api_url = "https://api.handliv.com/api/v1";  //? -?API Base URL
-input string               handliv_api_token = "";                              //? -?MT5 API Token
-input bool                 handliv_checar_conta = true;                         //? -?Check account active?
+
+string               handliv_api_url = "https://api.handliv.com/api/v1";  //? -?API Base URL
+string               handliv_secret = "6rsUNfHCWh0mj2nDEJG8OP3ZMlpbYXoR";              //? -?Secret (MT5_API_TOKEN)
+bool                 handliv_checar_conta = true;                         //? -?Check account active?
 bool     ativar_media2        = true;     //ATIVAR MEDIA 2?
 int      periodomedia2        = 9; //PERIODO DA MEDIA 2
 ENUM_MA_METHOD    mediametodo2    = MODE_EMA; //METODO DA MEDIA 2
@@ -4799,14 +4799,24 @@ void cancelarOrdem()
 //       }
 //}
 //+------------------------------------------------------------------+
+string HandlivToken(string account, string secret)
+  {
+   string data = account + secret;
+   uchar  src[], key[], dst[];
+   int    len = StringToCharArray(data, src, 0, StringLen(data));
+   if(!CryptEncode(CRYPT_HASH_SHA256, src, key, dst))
+      return "";
+   string hex = "";
+   for(int i=0; i<ArraySize(dst); i++)
+      hex += StringFormat("%02x", dst[i]);
+   return hex;
+  }
+//+------------------------------------------------------------------+
 void vencimento2()
 {
-   //string values[];
-   //StringSplit(expiracao2, ',', values);
-   
    string cookie=NULL,headers;
    char   post[],result[];
-   string url=handliv_api_url+"/mt5/ea/status?account="+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN));
+   string url=handliv_api_url+"/mt5/ea/status?account="+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN))+"&token="+HandlivToken(IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)), handliv_secret);
 //--- To enable access to the server, you should add URL "https://api.handliv.com"
 //--- to the list of allowed URLs (Main Menu->Tools->Options, tab "Expert Advisors"):
 //--- Resetting the last error code
@@ -4818,55 +4828,79 @@ void vencimento2()
       Print("Error in WebRequest. Error code  =",GetLastError());
       //--- Perhaps the URL is not listed, display a message about the necessity to add the address
       MessageBox("Add the address '"+url+"' to the list of allowed URLs on tab 'Expert Advisors'","Error",MB_ICONINFORMATION);
-      
+      HandlivCheckOldAPI();
+      //ExpertRemove();
+      return;
+     }
+   if(res==4014)
+     {
+      Print("Está no backtest");
       ExpertRemove();
+      return;
+     }
+   if(res==200)
+     {
+      CJAVal js(NULL, jtUNDEF);
+      js.Deserialize(result);
+      bool registered = js["registered"].ToBool();
+      bool is_active  = js["is_active"].ToBool();
+      PrintFormat("Handliv API: registered=%d is_active=%d",registered,is_active);
+      if (registered && is_active)
+        {
+         PrintFormat("Robot permitido operar, File size %d byte.",ArraySize(result));
+         return;
+        }
      }
    else
      {
-      if(res==200)
+      PrintFormat("'%s' failed, error code %d",url,res);
+     }
+//--- Conta nao confirmada na API nova: tenta a API antiga (handliv.com/clientes)
+   HandlivCheckOldAPI();
+}
+//+------------------------------------------------------------------+
+void HandlivCheckOldAPI()
+{
+   string cookie=NULL,headers;
+   char   post[],result[];
+   string url="http://handliv.com/clientes/"+IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN));
+//--- Resetting the last error code
+   ResetLastError();
+//--- Downloading a html page from handliv.com
+   int res=WebRequest("GET",url,cookie,NULL,500,post,0,result,headers);
+   if(res==-1)
+     {
+      Print("Error in WebRequest. Error code  =",GetLastError());
+      //--- Perhaps the URL is not listed, display a message about the necessity to add the address
+      MessageBox("Add the address '"+url+"' to the list of allowed URLs on tab 'Expert Advisors'","Error",MB_ICONINFORMATION);
+      
+      ExpertRemove();
+      return;
+     }
+   if(res==4014)
+     {
+      Print("Está no backtest");
+      ExpertRemove();
+      return;
+     }
+   if(res==200)
+     {
+      PrintFormat("Robot permitido operar (API antiga), File size %d byte.",ArraySize(result));
+      CJAVal js(NULL, jtUNDEF);
+      js.Deserialize(result);
+      string dt = js["clientes"]["dt_vencimento"].ToStr();
+      datetime expiracao2 = datetime(dt);
+      long ativo = js["clientes"]["ativo"].ToInt();
+      if (TimeCurrent() > expiracao2 || ativo == 0)
         {
-         //--- Successful download
-         PrintFormat("Robot permetido operar, File size %d byte.",ArraySize(result));
-         
-CJAVal js(NULL, jtUNDEF);
-         
-         js.Deserialize(result);
-         
-         bool registered = js["registered"].ToBool();
-         bool is_active  = js["is_active"].ToBool();
-          
-         if (!registered || !is_active)
-         {
-          Alert("Periodo de uso do robô expirado, contate a Handliv!");
-          
-          ExpertRemove();
-         }
-        
-           
-         //PrintFormat("Server headers: %s",headers);
-         //--- Saving the data to a file
-        // int filehandle=FileOpen("url.htm",FILE_WRITE|FILE_BIN);
-        // if(filehandle!=INVALID_HANDLE)
-        //   {
-        //    //--- Saving the contents of the result[] array to a file
-        //    FileWriteArray(filehandle,result,0,ArraySize(result));
-        //    //--- Closing the file
-        //    FileClose(filehandle);
-        //   }
-        // else
-        //    Print("Error in FileOpen. Error code =",GetLastError());
-        } else if(res==4014)
-                 {
-                  Print("Está no backtest");
-                  ExpertRemove();
-                 }
-      else
-        {
-         PrintFormat("'%s' failed, error code %d",url,res);
-         
+         Alert("Periodo de uso do robô expirado, contate a Handliv!");
          ExpertRemove();
         }
-         
+     }
+   else
+     {
+      PrintFormat("'%s' failed, error code %d",url,res);
+      ExpertRemove();
      }
 }
 //+------------------------------------------------------------------+
