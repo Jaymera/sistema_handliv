@@ -30,10 +30,10 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="recursos"
+          name="search"
           options={{
-            title: "Recursos",
-            tabBarIcon: ({ color }) => <TabBarIcon name="rocket" color={color} />,
+            title: "Busca",
+            tabBarIcon: ({ color }) => <TabBarIcon name="search" color={color} />,
           }}
         />
         <Tabs.Screen

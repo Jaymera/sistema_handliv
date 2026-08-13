@@ -69,13 +69,6 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Feature shortcuts */}
-      <View className="flex-row gap-3 mb-4">
-        <ShortcutCard icon="🤖" label="Robôs & Indicadores" onPress={() => router.push("/(tabs)/recursos")} />
-        <ShortcutCard icon="📈" label="Copy Trading" onPress={() => router.push("/(tabs)/recursos")} />
-        <ShortcutCard icon="🎥" label="Sala ao Vivo" onPress={() => router.push("/(tabs)/recursos")} />
-      </View>
-
       {/* Market breakdown */}
       <Text className="text-neutral-900 dark:text-white text-lg font-bold mb-2">Mercados</Text>
       <View className="flex-row flex-wrap gap-2 mb-4">
@@ -162,9 +155,9 @@ export default function DashboardScreen() {
         </Pressable>
         <Pressable
           className="flex-1 bg-neutral-200 dark:bg-neutral-800 rounded-xl py-3 items-center"
-          onPress={() => router.push("/(tabs)/recursos")}
+          onPress={() => router.push("/(tabs)/search")}
         >
-          <Text className="text-neutral-900 dark:text-white font-semibold">Recursos</Text>
+          <Text className="text-neutral-900 dark:text-white font-semibold">Buscar Ativo</Text>
         </Pressable>
         <Pressable
           className="px-4 bg-amber-500 rounded-xl py-3 items-center"
@@ -174,17 +167,5 @@ export default function DashboardScreen() {
         </Pressable>
       </View>
     </ScrollView>
-  );
-}
-
-function ShortcutCard({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
-  return (
-    <Pressable
-      className="flex-1 bg-neutral-50 dark:bg-neutral-900 rounded-2xl p-3 items-center"
-      onPress={onPress}
-    >
-      <Text className="text-2xl mb-1">{icon}</Text>
-      <Text className="text-neutral-900 dark:text-white text-xs font-semibold text-center">{label}</Text>
-    </Pressable>
   );
 }

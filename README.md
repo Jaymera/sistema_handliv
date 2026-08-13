@@ -137,27 +137,13 @@ npx expo start
 
 ### 4. Deploy no EasyPanel
 
-> Setup validado em produção (EasyPanel v2.26+). O repositório usa um único `docker-compose.yml` (tipo **Compose**) com os serviços `frontend`, `backend`, `celery_worker`, `celery_beat` e `redis`. O EasyPanel injeta automaticamente um `docker-compose.override.yml` que conecta os serviços à rede `easypanel`, então **não use `ports` no compose** — use apenas `expose` (o traefik roteia por DNS interno).
-
-1. **Crie o projeto** no EasyPanel e escolha **Compose** (não "Runtime"/"Buildpack").
-2. **Conecte o repositório GitHub** (`https://github.com/Jaymera/sistema_handliv.git`) e informe o caminho do compose (`docker-compose.yml`).
-3. **Variáveis de ambiente**: preencha no painel do serviço `saas_handliv` todas as variáveis do `.env` (Stripe, MySQL, JWT, Redis, ADMIN_*, URLs dos links de Recursos).
-4. **MySQL**: rode um serviço MySQL separado no EasyPanel (ou use externo) e aponte `DATABASE_URL` para ele. As migrations rodam no startup do backend (`alembic upgrade head`).
-5. **Redis**: o compose já sobe o serviço `redis` interno.
-6. **Domínios** (importante — foi a causa do erro 502 em produção):
-   - `app.handliv.com` → serviço **frontend**, porta **80**
-   - `api.handliv.com` → serviço **backend**, porta **8000**
-   - No painel do domínio, o `composeService` deve apontar exatamente para o nome do serviço (frontend/backend). Se ficar `null`, o traefik roteia para `..._undefined` e retorna 502.
-7. **Habilite HTTPS automático** (Let's Encrypt).
-8. **Deploy** e verifique:
-   - `https://api.handliv.com/api/v1/health` → `{"status":"ok"}`
-   - `https://app.handliv.com/` → SPA carregando (login OK)
-9. **Webhooks Stripe**: configure `https://api.handliv.com/api/v1/subscriptions/webhook` no dashboard da Stripe com o `whsec_*` real.
-
-**Troubleshooting EasyPanel**
-- `502 Bad Gateway`: domínio com `composeService` nulo → edite o domínio no painel e redeploy. Também garanta que os containers estejam na rede `easypanel`.
-- `ModuleNotFoundError` no celery: arquivos novos precisam estar commitados e pushados no GitHub antes do deploy (o painel puxa o branch `main`).
-- Alterou o compose? Use "Redeploy" (força regeração do override).
+1. Crie um projeto no EasyPanel
+2. Conecte o repositório
+3. Crie dois serviços (backend / frontend) apontando para os respectivos `Dockerfile`
+4. Adicione um serviço de MySQL e um de Redis (ou use gerenciados)
+5. Configure as variáveis de ambiente no painel
+6. Habilite HTTPS automático
+7. Defina a rota pública e o domínio
 
 ---
 

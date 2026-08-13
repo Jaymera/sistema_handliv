@@ -1,7 +1,6 @@
 import "../src/global.css";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useState } from "react";
 
@@ -97,15 +96,36 @@ export default function TradingPanelScreen() {
         </View>
       ) : null}
 
-      {/* Link back to Recursos */}
-      <View className="bg-neutral-100 dark:bg-neutral-900 rounded-xl px-4 py-3 mb-6">
-        <Text className="text-neutral-500 text-sm">
-          Acesse os recursos do seu plano (Robôs, Copy Trading, Sala ao Vivo, Cursos) na aba{" "}
-          <Text className="font-bold text-neutral-900 dark:text-white" onPress={() => router.push("/(tabs)/recursos")}>
-            Recursos
-          </Text>.
-        </Text>
-      </View>
+      {/* Recursos */}
+      <Text className="text-lg font-bold text-neutral-900 dark:text-white mb-2">Recursos</Text>
+      {f ? (
+        <View className="gap-3 mb-6">
+          {/* 🤖 Robôs e Indicadores */}
+          <ActionButton icon="🤖" title="Robôs e Indicadores Desvendados" active={f.robots_indicators}
+            actionUrl={f.robots_indicators ? links.robots_indicators : links.whatsapp}
+            actionLabel={f.robots_indicators ? "Acessar Robôs →" : "WhatsApp →"} color="#2563eb" lockedColor="#f59e0b" />
+
+          {/* 📈 Copy Trading */}
+          <ActionButton icon="📈" title="Copy Trading" active={f.copy_trading}
+            actionUrl={f.copy_trading ? links.copy_trading : links.whatsapp}
+            actionLabel={f.copy_trading ? "Acessar Copy Trading →" : "WhatsApp →"} color="#16a34a" lockedColor="#f59e0b" />
+
+          {/* 🎥 Sala de Trading ao Vivo */}
+          <ActionButton icon="🎥" title="Sala de Trading ao Vivo" active={f.live_trading_room}
+            actionUrl={f.live_trading_room ? links.discord : links.whatsapp}
+            actionLabel={f.live_trading_room ? "Entrar no Discord →" : "WhatsApp →"} color="#5865F2" lockedColor="#f59e0b" />
+
+          {/* 🎓 Desconto de Curso */}
+          <ActionButton icon="🎓" title="Desconto de Curso" active={f.course_discount}
+            actionUrl={f.course_discount ? links.cursos : links.whatsapp}
+            actionLabel={f.course_discount ? "Acessar Cursos →" : "WhatsApp →"} color="#7c3aed" lockedColor="#f59e0b" />
+
+          {/* 🤖 Robô Automático */}
+          <ActionButton icon="🤖" title="Robô Automático" active={f.auto_robot}
+            actionUrl={f.auto_robot ? HANDLIV : links.whatsapp}
+            actionLabel={f.auto_robot ? "Baixar Robô no Site →" : "WhatsApp →"} color="#dc2626" lockedColor="#f59e0b" />
+        </View>
+      ) : null}
 
       {/* Robô Automático: MT5 + Download info */}
       {f?.auto_robot ? (
@@ -235,6 +255,27 @@ export default function TradingPanelScreen() {
         </View>
       )}
     </ScrollView>
+  );
+}
+
+function ActionButton({ icon, title, active, actionUrl, actionLabel, color, lockedColor }: {
+  icon: string; title: string; active: boolean; actionUrl: string; actionLabel: string; color: string; lockedColor: string;
+}) {
+  return (
+    <View className="flex-row items-center justify-between rounded-2xl px-4 py-4"
+      style={{ backgroundColor: active ? "#f0fdf4" : "#fafaf9" }}>
+      <View className="flex-row items-center flex-1">
+        <Text className="text-3xl mr-3">{icon}</Text>
+        <View>
+          <Text className={active ? "text-neutral-900 dark:text-white font-bold text-base" : "text-neutral-400 font-bold text-base"}>{title}</Text>
+          <Text className="text-neutral-500 text-sm">{active ? "✓ Liberado" : "🔒 Bloqueado no seu plano"}</Text>
+        </View>
+      </View>
+      <Pressable className="px-4 py-2 rounded-lg" style={{ backgroundColor: active ? color : lockedColor }}
+        onPress={() => { if (actionUrl && typeof window !== "undefined") window.open(actionUrl, "_blank"); }}>
+        <Text className="text-white font-semibold text-sm">{actionLabel}</Text>
+      </Pressable>
+    </View>
   );
 }
 

@@ -6,21 +6,21 @@ from sqlalchemy.orm import Session
 
 from app.infrastructure.database.models import Asset, WatchlistItem
 from app.infrastructure.database.session import get_db
-from app.presentation.deps.auth import current_user_with_plan
+from app.presentation.deps.auth import get_current_user
 
 router = APIRouter()
 
 
 def _limit_reached(db: Session, user) -> bool:
     count = db.scalar(select(WatchlistItem).where(WatchlistItem.user_id == user.id))
+    # naive: free 5, pro 50, premium unlimited
     plan = getattr(user, "_plan_payload", None) or {"code": "free"}
-    limits = plan.get("limits") or {}
-    max_items = limits.get("watchlist") or {"free": 5, "start": 50, "ultimate": 999999}.get(plan["code"], 5)
-    return count >= max_items
+    limits = {"free": 5, "pro": 50, "premium": 999999}
+    return count >= limits.get(plan["code"], 5)
 
 
 @router.get("/watchlist")
-def list_watchlist(user=Depends(current_user_with_plan), db: Session = Depends(get_db)) -> list[dict]:
+def list_watchlist(user=Depends(get_current_user), db: Session = Depends(get_db)) -> list[dict]:
     items = db.scalars(select(WatchlistItem).where(WatchlistItem.user_id == user.id).order_by(WatchlistItem.sort_order)).all()
     return [
         {
@@ -32,7 +32,7 @@ def list_watchlist(user=Depends(current_user_with_plan), db: Session = Depends(g
 
 
 @router.post("/watchlist", status_code=status.HTTP_201_CREATED)
-def add_to_watchlist(symbol: str, user=Depends(current_user_with_plan), db: Session = Depends(get_db)) -> dict:
+def add_to_watchlist(symbol: str, user=Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     asset = db.scalar(select(Asset).where(Asset.symbol == symbol.upper()))
     if asset is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
@@ -49,7 +49,7 @@ def add_to_watchlist(symbol: str, user=Depends(current_user_with_plan), db: Sess
 
 
 @router.delete("/watchlist/{symbol}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-def remove_from_watchlist(symbol: str, user=Depends(current_user_with_plan), db: Session = Depends(get_db)) -> None:
+def remove_from_watchlist(symbol: str, user=Depends(get_current_user), db: Session = Depends(get_db)) -> None:
     asset = db.scalar(select(Asset).where(Asset.symbol == symbol.upper()))
     if asset is None:
         return
@@ -73,7 +73,7 @@ def suggested(db: Session = Depends(get_db)) -> list[dict]:
 
 
 @router.patch("/watchlist/reorder", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
-def reorder(items: list[dict], user=Depends(current_user_with_plan), db: Session = Depends(get_db)) -> None:
+def reorder(items: list[dict], user=Depends(get_current_user), db: Session = Depends(get_db)) -> None:
     for entry in items:
         asset = db.scalar(select(Asset).where(Asset.symbol == entry["symbol"].upper()))
         if asset is None:
