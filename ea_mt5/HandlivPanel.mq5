@@ -53,9 +53,10 @@ string   g_status   = "Conectando...";
 //+------------------------------------------------------------------+
 string Sha256Hex(const string text)
 {
-   uchar src[], dst[];
+   uchar src[], key[], dst[];
    StringToCharArray(text, src, 0, StringLen(text));
-   if(CryptEncode(CRYPT_SHA256, src, src, dst) <= 0) return "";
+   StringToCharArray("", key, 0, 0);
+   if(CryptEncode(CRYPT_HASH_SHA256, src, key, dst) <= 0) return "";
    string hex = "";
    for(int i = 0; i < ArraySize(dst); i++)
       hex += StringFormat("%02x", dst[i]);

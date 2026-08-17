@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //|                                                     EA CURSO.mq5 |
 //|                                  Copyright 2021, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
@@ -2413,7 +2413,7 @@ bool ativar_heiken = true;
 
 ENUM_ACCOUNT_TRADE_MODE contarealoudemo = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
 
-datetime expiracao = D'30.12.2025';
+datetime expiracao = D'30.12.2026';
 
 int OnInit()
   {
