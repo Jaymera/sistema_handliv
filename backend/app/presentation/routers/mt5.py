@@ -46,14 +46,25 @@ def ea_account_status(
     }
 
 
+def _require_feature(db: Session, user: User, feature: str, message: str) -> None:
+    """Bloqueia o recurso se o plano do usuário não o incluir (super_admin sempre passa)."""
+    if user.role.value == "super_admin":
+        return
+    plan_info = check_user_plan(db, user)
+    if not plan_info.get("limits", {}).get(feature, False):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, message)
+
+
 @router.get("/mt5/accounts")
 def list_mt5_accounts(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
     rows = db.scalars(select(MT5Account).where(MT5Account.user_id == user.id).order_by(MT5Account.created_at.desc())).all()
     return {"items": [{"id": str(r.id), "account_number": r.account_number, "broker": r.broker, "is_active": r.is_active} for r in rows]}
 
 
 @router.post("/mt5/accounts", status_code=status.HTTP_201_CREATED)
 def add_mt5_account(payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
     accounts_str = payload.get("accounts", "").strip()
     if not accounts_str:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "accounts é obrigatório")
@@ -115,6 +126,7 @@ def my_features(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.get("/trades")
 def list_trades(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    _require_feature(db, user, "trading_panel", "Painel de Trading disponível nos planos Start e Ultimate")
     rows = db.scalars(
         select(TradeRecord).where(TradeRecord.user_id == user.id).order_by(TradeRecord.created_at.desc())
     ).all()
@@ -134,6 +146,7 @@ def list_trades(user: User = Depends(get_current_user), db: Session = Depends(ge
 
 @router.post("/trades", status_code=status.HTTP_201_CREATED)
 def add_trade(payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    _require_feature(db, user, "trading_panel", "Painel de Trading disponível nos planos Start e Ultimate")
     asset_symbol = payload.get("asset_symbol", "").strip()
     result_pct = payload.get("result_pct")
     note = payload.get("note", "")

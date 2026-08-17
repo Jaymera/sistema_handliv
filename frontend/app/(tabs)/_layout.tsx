@@ -1,24 +1,31 @@
-import { StatusBar } from "expo-status-bar";
 import { Tabs } from "expo-router";
-import { useColorScheme } from "react-native";
+import { StatusBar } from "expo-status-bar";
 
+import { C } from "@/components/ui";
 import { TabBarIcon } from "@/components/TabBarIcon";
 
 export default function TabLayout() {
-  const scheme = useColorScheme();
   return (
     <>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <StatusBar style="light" />
       <Tabs
         screenOptions={{
-          tabBarActiveTintColor: scheme === "dark" ? "#60a5fa" : "#1d4ed8",
-          headerShown: true,
+          headerShown: false,
+          tabBarActiveTintColor: C.brand,
+          tabBarInactiveTintColor: C.faint,
+          tabBarStyle: {
+            backgroundColor: C.deep,
+            borderTopColor: C.line,
+            borderTopWidth: 1,
+          },
+          tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
+          tabBarItemStyle: { paddingVertical: 4 },
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
-            title: "Dashboard",
+            title: "Início",
             tabBarIcon: ({ color }) => <TabBarIcon name="grid" color={color} />,
           }}
         />
@@ -30,10 +37,24 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="search"
+          name="trading"
           options={{
-            title: "Busca",
-            tabBarIcon: ({ color }) => <TabBarIcon name="search" color={color} />,
+            title: "Painel",
+            tabBarIcon: ({ color }) => <TabBarIcon name="pulse" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="trades"
+          options={{
+            title: "Trades",
+            tabBarIcon: ({ color }) => <TabBarIcon name="stats-chart" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="robot"
+          options={{
+            title: "Robô",
+            tabBarIcon: ({ color }) => <TabBarIcon name="hardware-chip" color={color} />,
           }}
         />
         <Tabs.Screen

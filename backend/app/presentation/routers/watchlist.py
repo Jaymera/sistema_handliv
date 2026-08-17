@@ -1,22 +1,22 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.infrastructure.database.models import Asset, WatchlistItem
 from app.infrastructure.database.session import get_db
 from app.presentation.deps.auth import get_current_user
+from app.presentation.routers.subscriptions import check_user_plan
 
 router = APIRouter()
 
 
 def _limit_reached(db: Session, user) -> bool:
-    count = db.scalar(select(WatchlistItem).where(WatchlistItem.user_id == user.id))
-    # naive: free 5, pro 50, premium unlimited
-    plan = getattr(user, "_plan_payload", None) or {"code": "free"}
-    limits = {"free": 5, "pro": 50, "premium": 999999}
-    return count >= limits.get(plan["code"], 5)
+    count = db.scalar(select(func.count()).select_from(WatchlistItem).where(WatchlistItem.user_id == user.id)) or 0
+    plan_info = check_user_plan(db, user)
+    limits = {"free": 5, "start": 50, "ultimate": 999999}
+    return count >= limits.get(plan_info.get("code", "free"), 5)
 
 
 @router.get("/watchlist")

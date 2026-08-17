@@ -1,9 +1,11 @@
 import "../../src/global.css";
 
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { backtestsApi } from "@/api/client";
+import { C, Card, Input, PrimaryButton } from "@/components/ui";
 
 export default function NewBacktestScreen() {
   const [symbol, setSymbol] = useState("");
@@ -28,16 +30,27 @@ export default function NewBacktestScreen() {
   }
 
   return (
-    <ScrollView className="flex-1 bg-white dark:bg-neutral-950 p-4 gap-3">
-      <Text className="text-2xl font-bold text-neutral-900 dark:text-white">Novo backtest</Text>
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={symbol} onChangeText={setSymbol} placeholder="Símbolo (ex.: PETR4.SA)" placeholderTextColor="#888" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={startDate} onChangeText={setStartDate} placeholder="Data início (YYYY-MM-DD)" placeholderTextColor="#888" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={endDate} onChangeText={setEndDate} placeholder="Data fim (YYYY-MM-DD)" placeholderTextColor="#888" />
-      {error ? <Text className="text-red-500">{error}</Text> : null}
-      {result ? <Text className="text-green-600">{result}</Text> : null}
-      <Pressable className="bg-blue-600 px-4 py-3 rounded-md items-center disabled:opacity-50" onPress={submit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Executar</Text>}
-      </Pressable>
+    <ScrollView className="flex-1 bg-night" contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 18, paddingBottom: 32 }}>
+      <View className="items-center mb-6">
+        <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: C.purple + "22" }}>
+          <Ionicons name="flask" size={26} color={C.purple} />
+        </View>
+        <Text className="text-ink text-2xl font-bold">Novo backtest</Text>
+        <Text className="text-ink-soft text-sm mt-1">Teste estratégias em dados históricos</Text>
+      </View>
+
+      <Card className="p-5">
+        <Input value={symbol} onChangeText={setSymbol} placeholder="Símbolo (ex.: PETR4.SA)" autoCapitalize="characters" />
+        <Input value={startDate} onChangeText={setStartDate} placeholder="Data início (AAAA-MM-DD)" />
+        <Input value={endDate} onChangeText={setEndDate} placeholder="Data fim (AAAA-MM-DD)" onSubmitEditing={submit} />
+        {error ? <Text className="text-down text-sm mb-3">{error}</Text> : null}
+        {result ? (
+          <View className="rounded-xl p-3 mb-3" style={{ backgroundColor: C.up + "14", borderWidth: 1, borderColor: C.up + "44" }}>
+            <Text className="text-up text-sm">{result}</Text>
+          </View>
+        ) : null}
+        <PrimaryButton label="Executar backtest" onPress={submit} loading={loading} color={C.purple} />
+      </Card>
     </ScrollView>
   );
 }

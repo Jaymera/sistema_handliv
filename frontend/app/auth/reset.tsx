@@ -2,9 +2,11 @@ import "../../src/global.css";
 
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { authApi } from "@/api/client";
+import { C, Card, Input, PrimaryButton } from "@/components/ui";
 
 export default function ResetScreen() {
   const [token, setToken] = useState("");
@@ -26,14 +28,22 @@ export default function ResetScreen() {
   }
 
   return (
-    <View className="flex-1 bg-white dark:bg-neutral-950 p-6 gap-4">
-      <Text className="text-2xl font-bold text-neutral-900 dark:text-white">Redefinir senha</Text>
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={token} onChangeText={setToken} placeholder="Token recebido por email" placeholderTextColor="#888" autoCapitalize="none" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={password} onChangeText={setPassword} placeholder="Nova senha" placeholderTextColor="#888" secureTextEntry />
-      {error ? <Text className="text-red-500">{error}</Text> : null}
-      <Pressable className="bg-blue-600 px-4 py-3 rounded-md items-center disabled:opacity-50" onPress={submit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Redefinir</Text>}
-      </Pressable>
-    </View>
+    <KeyboardAvoidingView className="flex-1 bg-night" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 40 }}>
+        <View className="items-center mb-8">
+          <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: C.brand + "22" }}>
+            <Ionicons name="lock-closed" size={26} color={C.brand} />
+          </View>
+          <Text className="text-ink text-2xl font-bold">Redefinir senha</Text>
+        </View>
+
+        <Card className="p-5">
+          <Input value={token} onChangeText={setToken} placeholder="Token recebido por email" autoCapitalize="none" />
+          <Input value={password} onChangeText={setPassword} placeholder="Nova senha" secureTextEntry onSubmitEditing={submit} />
+          {error ? <Text className="text-down text-sm mb-3">{error}</Text> : null}
+          <PrimaryButton label="Redefinir" onPress={submit} loading={loading} />
+        </Card>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

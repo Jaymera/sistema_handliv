@@ -2,9 +2,11 @@ import "../../src/global.css";
 
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
 import { useAuthStore } from "@/state/authStore";
+import { C, Card, Input, PrimaryButton } from "@/components/ui";
 
 export default function RegisterScreen() {
   const register = useAuthStore((s) => s.register);
@@ -29,16 +31,32 @@ export default function RegisterScreen() {
   }
 
   return (
-    <View className="flex-1 bg-white dark:bg-neutral-950 p-6 gap-4">
-      <Text className="text-2xl font-bold text-neutral-900 dark:text-white">Criar conta</Text>
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={name} onChangeText={setName} placeholder="Nome" placeholderTextColor="#888" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={email} onChangeText={setEmail} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" keyboardType="email-address" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={phone} onChangeText={setPhone} placeholder="Celular" placeholderTextColor="#888" />
-      <TextInput className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white" value={password} onChangeText={setPassword} placeholder="Senha (mín 8, letras+números)" placeholderTextColor="#888" secureTextEntry />
-      {error ? <Text className="text-red-500">{error}</Text> : null}
-      <Pressable className="bg-blue-600 px-4 py-3 rounded-md items-center disabled:opacity-50" onPress={submit} disabled={loading}>
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Cadastrar</Text>}
-      </Pressable>
-    </View>
+    <KeyboardAvoidingView className="flex-1 bg-night" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 40 }}>
+        <View className="items-center mb-8">
+          <View className="w-14 h-14 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: C.brand + "22" }}>
+            <Ionicons name="person-add" size={26} color={C.brand} />
+          </View>
+          <Text className="text-ink text-2xl font-bold">Criar conta</Text>
+          <Text className="text-ink-soft text-sm mt-1">Comece grátis no plano Free</Text>
+        </View>
+
+        <Card className="p-5">
+          <Input value={name} onChangeText={setName} placeholder="Nome completo" />
+          <Input value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" keyboardType="email-address" />
+          <Input value={phone} onChangeText={setPhone} placeholder="Celular (opcional)" keyboardType="phone-pad" />
+          <Input value={password} onChangeText={setPassword} placeholder="Senha (mín 8, letras+números)" secureTextEntry onSubmitEditing={submit} />
+          {error ? <Text className="text-down text-sm mb-3">{error}</Text> : null}
+          <PrimaryButton label="Cadastrar" onPress={submit} loading={loading} />
+        </Card>
+
+        <Text className="text-ink-soft text-sm text-center mt-5">
+          Já tem conta?{" "}
+          <Text className="text-accent font-semibold" onPress={() => router.push("/auth/login")}>
+            Entrar
+          </Text>
+        </Text>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

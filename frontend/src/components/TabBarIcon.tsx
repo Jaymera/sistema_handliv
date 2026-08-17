@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { IconProps } from "@expo/vector-icons/build/createIconSet";
+import type { ComponentProps } from "react";
 
-type Name = "grid" | "trending-up" | "search" | "person";
+type Name = "grid" | "trending-up" | "person" | "pulse" | "stats-chart" | "hardware-chip";
 
 export function TabBarIcon({ name, color }: { name: Name; color: string }) {
-  return <Ionicons name={name as unknown as IconProps<string>["name"]} size={24} color={color} />;
+  return <Ionicons name={name as ComponentProps<typeof Ionicons>["name"]} size={22} color={color} />;
 }

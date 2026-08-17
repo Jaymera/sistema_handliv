@@ -2,10 +2,11 @@ import "../../src/global.css";
 
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
-import { authApi } from "@/api/client";
 import { useAuthStore } from "@/state/authStore";
+import { C, Card, GhostButton, Input, PrimaryButton } from "@/components/ui";
 
 export default function LoginScreen() {
   const login = useAuthStore((s) => s.login);
@@ -28,45 +29,54 @@ export default function LoginScreen() {
   }
 
   return (
-    <View className="flex-1 bg-white dark:bg-neutral-950 p-6 gap-4">
-      <Text className="text-2xl font-bold text-neutral-900 dark:text-white">Entrar</Text>
-      <TextInput
-        className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white"
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Email"
-        placeholderTextColor="#888"
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-      <TextInput
-        className="border border-neutral-300 dark:border-neutral-700 rounded-md px-3 py-3 text-neutral-900 dark:text-white"
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Senha"
-        placeholderTextColor="#888"
-        secureTextEntry
-      />
-      {error ? <Text className="text-red-500">{error}</Text> : null}
-      <Pressable
-        className="bg-blue-600 px-4 py-3 rounded-md items-center disabled:opacity-50"
-        onPress={submit}
-        disabled={loading}
-      >
-        {loading ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-semibold">Entrar</Text>}
-      </Pressable>
-      <Pressable onPress={() => router.push("/auth/register")}>
-        <Text className="text-blue-600 text-center">Criar conta</Text>
-      </Pressable>
-      <Pressable onPress={() => router.push("/auth/forgot")}>
-        <Text className="text-blue-600 text-center text-sm">Esqueci a senha</Text>
-      </Pressable>
-      <Pressable
-        className="mt-4 bg-amber-500 px-4 py-3 rounded-md items-center"
-        onPress={() => { if (typeof window !== "undefined") window.open("https://handliv.com", "_blank"); }}
-      >
-        <Text className="text-white font-semibold">Ver Planos & Preços</Text>
-      </Pressable>
-    </View>
+    <KeyboardAvoidingView className="flex-1 bg-night" behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "center", paddingHorizontal: 24, paddingVertical: 40 }}>
+        {/* Brand */}
+        <View className="items-center mb-8">
+          <View className="w-16 h-16 rounded-2xl items-center justify-center mb-3" style={{ backgroundColor: C.brand + "22" }}>
+            <Ionicons name="trending-up" size={30} color={C.brand} />
+          </View>
+          <Text className="text-ink text-3xl font-bold">Handliv</Text>
+          <Text className="text-ink-soft text-sm mt-1">Trading Intelligence Platform</Text>
+        </View>
+
+        <Card className="p-5">
+          <Text className="text-ink text-xl font-bold mb-4">Entrar</Text>
+          <Input
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email"
+            autoCapitalize="none"
+            keyboardType="email-address"
+          />
+          <Input
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Senha"
+            secureTextEntry
+            onSubmitEditing={submit}
+          />
+          {error ? <Text className="text-down text-sm mb-3">{error}</Text> : null}
+          <PrimaryButton label="Entrar" onPress={submit} loading={loading} />
+
+          <View className="flex-row justify-center gap-5 mt-4">
+            <Text className="text-accent text-sm font-semibold" onPress={() => router.push("/auth/register")}>
+              Criar conta
+            </Text>
+            <Text className="text-ink-soft text-sm" onPress={() => router.push("/auth/forgot")}>
+              Esqueci a senha
+            </Text>
+          </View>
+        </Card>
+
+        <View className="mt-6">
+          <GhostButton
+            label="Ver planos & preços"
+            color={C.brand}
+            onPress={() => router.push("/pricing")}
+          />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

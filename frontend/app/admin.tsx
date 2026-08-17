@@ -1,9 +1,10 @@
 import "../src/global.css";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import { adminApi } from "@/api/client";
+import { Badge, C, Card, Loading, SectionTitle } from "@/components/ui";
 
 export default function AdminScreen() {
   const qc = useQueryClient();
@@ -25,93 +26,103 @@ export default function AdminScreen() {
   };
 
   const planColors: Record<string, string> = {
-    free: "#737373", start: "#2563eb", ultimate: "#7c3aed",
+    free: "#95A6C3",
+    start: "#4C8DFF",
+    ultimate: "#8B5CF6",
   };
 
   return (
-    <ScrollView className="flex-1 bg-white dark:bg-neutral-950 p-4">
-      <Text className="text-2xl font-bold text-neutral-900 dark:text-white">Painel Admin</Text>
+    <ScrollView className="flex-1 bg-night" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 32 }}>
+      <Text className="text-ink-faint text-xs font-bold tracking-widest mb-1">HANDLIV · ADMIN</Text>
+      <Text className="text-ink text-2xl font-bold mb-5">Painel Admin</Text>
 
       {/* Pesos */}
-      <Text className="mt-5 text-neutral-900 dark:text-white font-semibold">Pesos do motor</Text>
+      <SectionTitle>Pesos do motor</SectionTitle>
       {wLoading ? (
-        <ActivityIndicator />
+        <Loading />
       ) : weights ? (
-        <View className="mt-2 gap-1">
-          <Text className="text-neutral-900 dark:text-white">Técnica: {Math.round(weights.technical_weight * 100)}%</Text>
-          <Text className="text-neutral-900 dark:text-white">Valuation: {Math.round(weights.valuation_weight * 100)}%</Text>
-          <Text className="text-neutral-900 dark:text-white">Sentimento: {Math.round(weights.sentiment_weight * 100)}%</Text>
-          <Text className="text-neutral-500">Confiança mín.: {weights.min_confidence}</Text>
-        </View>
+        <Card className="p-4 mb-6 flex-row justify-between">
+          <View className="items-center flex-1">
+            <Text className="text-accent text-lg font-bold">{Math.round(weights.technical_weight * 100)}%</Text>
+            <Text className="text-ink-faint text-xs">Técnica</Text>
+          </View>
+          <View className="items-center flex-1">
+            <Text className="text-up text-lg font-bold">{Math.round(weights.valuation_weight * 100)}%</Text>
+            <Text className="text-ink-faint text-xs">Valuation</Text>
+          </View>
+          <View className="items-center flex-1">
+            <Text className="text-amber text-lg font-bold">{Math.round(weights.sentiment_weight * 100)}%</Text>
+            <Text className="text-ink-faint text-xs">Sentimento</Text>
+          </View>
+          <View className="items-center flex-1">
+            <Text className="text-ink text-lg font-bold">{weights.min_confidence}</Text>
+            <Text className="text-ink-faint text-xs">Conf. mín.</Text>
+          </View>
+        </Card>
       ) : null}
 
       {/* Usuários */}
-      <Text className="mt-6 text-lg font-bold text-neutral-900 dark:text-white">Usuários</Text>
+      <SectionTitle>Usuários</SectionTitle>
       {uLoading ? (
-        <ActivityIndicator />
+        <Loading />
       ) : usersData && usersData.items.length > 0 ? (
-        <View className="mt-2 gap-2">
+        <View className="gap-3">
           {usersData.items.map((u) => (
-            <View key={u.id} className="border border-neutral-200 dark:border-neutral-800 rounded-2xl p-4">
-              {/* Header */}
-              <View className="flex-row justify-between items-start mb-2">
+            <Card key={u.id} className="p-4">
+              <View className="flex-row justify-between items-start mb-3">
                 <View className="flex-1">
-                  <Text className="text-neutral-900 dark:text-white font-bold text-base">{u.name}</Text>
-                  <Text className="text-neutral-500 text-sm">{u.email}</Text>
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-ink font-bold text-base">{u.name}</Text>
+                    {u.role === "super_admin" ? <Badge text="ADMIN" color={C.amber} /> : null}
+                  </View>
+                  <Text className="text-ink-soft text-sm">{u.email}</Text>
                   {u.last_login_at ? (
-                    <Text className="text-neutral-400 text-xs">Último login: {new Date(u.last_login_at).toLocaleDateString("pt-BR")}</Text>
+                    <Text className="text-ink-faint text-[11px] mt-0.5">
+                      Último login: {new Date(u.last_login_at).toLocaleDateString("pt-BR")}
+                    </Text>
                   ) : null}
                 </View>
-                {/* Status badge */}
-                <View className={`px-3 py-1 rounded-full ${u.is_active ? "bg-green-100" : "bg-red-100"}`}>
-                  <Text className={u.is_active ? "text-green-700 text-xs font-bold" : "text-red-700 text-xs font-bold"}>
-                    {u.is_active ? "✓ ATIVO" : "✗ INATIVO"}
-                  </Text>
-                </View>
+                <Badge text={u.is_active ? "ATIVO" : "INATIVO"} color={u.is_active ? C.up : C.down} />
               </View>
 
-              {/* Plan badge */}
-              <View className="flex-row items-center gap-2 mb-2">
-                <View className="px-3 py-1 rounded-full" style={{ backgroundColor: (planColors[u.plan_code] || "#737373") + "20" }}>
-                  <Text style={{ color: planColors[u.plan_code] || "#737373" }} className="text-xs font-bold">
-                    {u.plan_name.toUpperCase()}
-                  </Text>
-                </View>
-                <Text className="text-neutral-500 text-xs">Status: {u.subscription_status}</Text>
-                {u.role === "super_admin" ? (
-                  <Text className="text-amber-600 text-xs font-bold">ADMIN</Text>
-                ) : null}
+              <View className="flex-row items-center gap-2 mb-3">
+                <Badge text={u.plan_name.toUpperCase()} color={planColors[u.plan_code] || C.soft} />
+                <Text className="text-ink-faint text-xs">{u.subscription_status}</Text>
               </View>
 
-              {/* Actions */}
               <View className="flex-row gap-2 flex-wrap">
                 <Pressable
-                  className={`px-3 py-2 rounded-lg ${u.is_active ? "bg-red-500" : "bg-green-500"}`}
+                  className="px-3 py-2 rounded-lg"
+                  style={{ backgroundColor: u.is_active ? C.down + "22" : C.up + "22" }}
                   onPress={() => toggleActive(u.id, u.is_active)}
                 >
-                  <Text className="text-white text-sm font-semibold">
-                    {u.is_active ? "Desativar" : "Ativar"}
+                  <Text className="text-xs font-bold" style={{ color: u.is_active ? C.down : C.up }}>
+                    {u.is_active ? "DESATIVAR" : "ATIVAR"}
                   </Text>
                 </Pressable>
-
-                {/* Trocar plano */}
-                {(["free", "start", "ultimate"] as const).map((code) => (
-                  <Pressable
-                    key={code}
-                    className={`px-3 py-2 rounded-lg ${u.plan_code === code ? "bg-blue-600" : "bg-neutral-200 dark:bg-neutral-800"}`}
-                    onPress={() => changePlan(u.id, code)}
-                  >
-                    <Text className={u.plan_code === code ? "text-white text-sm font-semibold" : "text-neutral-700 dark:text-neutral-300 text-sm font-semibold"}>
-                      {code.toUpperCase()}
-                    </Text>
-                  </Pressable>
-                ))}
+                {(["free", "start", "ultimate"] as const).map((code) => {
+                  const active = u.plan_code === code;
+                  return (
+                    <Pressable
+                      key={code}
+                      className="px-3 py-2 rounded-lg"
+                      style={{
+                        backgroundColor: active ? (planColors[code] || C.accent) : C.surface2,
+                      }}
+                      onPress={() => changePlan(u.id, code)}
+                    >
+                      <Text className="text-xs font-bold" style={{ color: active ? "#fff" : C.soft }}>
+                        {code.toUpperCase()}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
               </View>
-            </View>
+            </Card>
           ))}
         </View>
       ) : (
-        <Text className="text-neutral-500">Nenhum usuário.</Text>
+        <Text className="text-ink-soft">Nenhum usuário.</Text>
       )}
     </ScrollView>
   );
