@@ -26,7 +26,7 @@ from app.infrastructure.database.models.user_assets import (
     MT5Account,
     WatchlistItem,
 )
-from app.infrastructure.database.models.trades import TradeRecord
+from app.infrastructure.database.models.trades import MT5Command, TradeRecord
 from app.infrastructure.database.models.backtests import (
     Backtest,
     BacktestStatus,
@@ -82,6 +82,7 @@ __all__ = [
     "WatchlistItem",
     # Trades
     "TradeRecord",
+    "MT5Command",
     # Backtesting
     "Backtest",
     "BacktestStatus",

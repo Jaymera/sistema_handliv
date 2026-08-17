@@ -37,11 +37,14 @@ interface AuthState {
   user: User | null;
   accessToken: string | null;
   refreshToken: string | null;
+  lastActivityAt?: number;
   hydrate: () => Promise<void>;
   login: (c: Credentials) => Promise<void>;
   register: (c: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  touchActivity: () => void;
+  isSessionExpired: () => boolean;
 }
 
 interface RegisterRequest {
@@ -54,12 +57,17 @@ interface RegisterRequest {
 const KEY_ACCESS = "auth.access";
 const KEY_REFRESH = "auth.refresh";
 const KEY_USER = "auth.user";
+const KEY_LAST_ACTIVITY = "auth.lastActivity";
+
+/** Sessão expira após 60 minutos sem atividade. */
+export const SESSION_TIMEOUT_MS = 60 * 60 * 1000;
 
 async function persistTokens(access: string, refresh: string, user: User) {
   await Promise.all([
     secureStorage.setItem(KEY_ACCESS, access),
     secureStorage.setItem(KEY_REFRESH, refresh),
     secureStorage.setItem(KEY_USER, JSON.stringify(user)),
+    secureStorage.setItem(KEY_LAST_ACTIVITY, String(Date.now())),
   ]);
 }
 
@@ -68,6 +76,7 @@ async function clearTokens() {
     secureStorage.deleteItem(KEY_ACCESS),
     secureStorage.deleteItem(KEY_REFRESH),
     secureStorage.deleteItem(KEY_USER),
+    secureStorage.deleteItem(KEY_LAST_ACTIVITY),
   ]);
 }
 
@@ -77,12 +86,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   refreshToken: null,
   hydrate: async () => {
-    const [access, refresh, userJson] = await Promise.all([
+    const [access, refresh, userJson, lastAct] = await Promise.all([
       secureStorage.getItem(KEY_ACCESS),
       secureStorage.getItem(KEY_REFRESH),
       secureStorage.getItem(KEY_USER),
+      secureStorage.getItem(KEY_LAST_ACTIVITY),
     ]);
-    set({ accessToken: access, refreshToken: refresh, user: userJson ? JSON.parse(userJson) : null, hydrated: true });
+    const lastActivityAt = lastAct ? parseInt(lastAct, 10) : access ? Date.now() : 0;
+    set({ accessToken: access, refreshToken: refresh, user: userJson ? JSON.parse(userJson) : null, hydrated: true, lastActivityAt });
   },
   login: async (c) => {
     const data = await authApi.login(c);
@@ -112,5 +123,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const data = await authApi.refresh(refresh);
     await persistTokens(data.access_token, data.refresh_token, data.user);
     set({ accessToken: data.access_token, refreshToken: data.refresh_token, user: data.user });
+  },
+  touchActivity: () => {
+    const now = Date.now();
+    if (get().accessToken) {
+      set({ lastActivityAt: now });
+      if (Platform.OS === "web") localStorage.setItem(KEY_LAST_ACTIVITY, String(now));
+    }
+  },
+  isSessionExpired: () => {
+    const state = get();
+    if (!state.accessToken) return false;
+    const last = state.lastActivityAt ?? 0;
+    return Date.now() - last > SESSION_TIMEOUT_MS;
   },
 }));

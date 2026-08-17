@@ -5,12 +5,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.infrastructure.database.models import MT5Account, TradeRecord, User
+from app.infrastructure.database.models import MT5Account, MT5Command, TradeRecord, User
 from app.infrastructure.database.session import get_db
 from app.presentation.deps.auth import get_current_user
 from app.presentation.routers.subscriptions import check_user_plan
 
 router = APIRouter()
+
+MT5_MAX_ACCOUNTS = 2
 
 
 def _require_ea_token(account: str, token: str | None) -> None:
@@ -46,6 +48,131 @@ def ea_account_status(
     }
 
 
+# ===== Painel de Trading remoto (web -> EA) =====
+
+
+def _cmd_to_dict(c: MT5Command) -> dict:
+    return {
+        "id": str(c.id),
+        "account_number": c.account_number,
+        "action": c.action,
+        "symbol": c.symbol,
+        "volume": float(c.volume) if c.volume is not None else None,
+        "status": c.status,
+        "result_message": c.result_message,
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+        "executed_at": c.executed_at.isoformat() if c.executed_at else None,
+    }
+
+
+@router.post("/mt5/orders", status_code=status.HTTP_201_CREATED)
+def create_order(payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Cria um comando (buy/sell/close) para ser executado pelo EA na conta MT5 informada."""
+    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    action = (payload.get("action") or "").strip().lower()
+    if action not in ("buy", "sell", "close"):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "action deve ser buy, sell ou close")
+    symbol = (payload.get("symbol") or "").strip().upper()
+    volume = payload.get("volume")
+    if action in ("buy", "sell"):
+        if not symbol:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "symbol é obrigatório para buy/sell")
+        try:
+            vol = round(float(str(volume).replace(",", ".")), 2) if volume not in (None, "") else None
+        except ValueError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "volume inválido")
+        if vol is None or vol <= 0:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "volume deve ser maior que zero")
+    else:
+        symbol = symbol or None
+        vol = None
+
+    # aceita account (número) ou account_id
+    account = (payload.get("account") or "").strip()
+    account_id = (payload.get("account_id") or "").strip()
+    acc = None
+    if account_id:
+        acc = db.get(MT5Account, account_id)
+    elif account:
+        acc = db.scalar(select(MT5Account).where(MT5Account.user_id == user.id, MT5Account.account_number == account))
+    if acc is None or acc.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "conta MT5 não encontrada")
+    if not acc.is_active:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "conta MT5 inativa")
+
+    from decimal import Decimal
+
+    cmd = MT5Command(
+        user_id=user.id,
+        account_number=acc.account_number,
+        action=action,
+        symbol=symbol,
+        volume=Decimal(str(vol)) if vol is not None else None,
+        status="pending",
+    )
+    db.add(cmd)
+    db.commit()
+    return _cmd_to_dict(cmd)
+
+
+@router.get("/mt5/orders")
+def list_orders(user: User = Depends(get_current_user), db: Session = Depends(get_db), limit: int = Query(20, le=100)) -> dict:
+    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    rows = db.scalars(
+        select(MT5Command)
+        .where(MT5Command.user_id == user.id)
+        .order_by(MT5Command.created_at.desc())
+        .limit(limit)
+    ).all()
+    return {"items": [_cmd_to_dict(c) for c in rows]}
+
+
+@router.get("/mt5/ea/commands")
+def ea_poll_commands(
+    account: str = Query(...),
+    token: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> dict:
+    """O EA consulta este endpoint (a cada segundo) para receber comandos pendentes da conta."""
+    _require_ea_token(account, token)
+    rows = db.scalars(
+        select(MT5Command)
+        .where(MT5Command.account_number == account, MT5Command.status == "pending")
+        .order_by(MT5Command.created_at.asc())
+        .limit(10)
+    ).all()
+    from datetime import datetime, timezone
+
+    items = []
+    for c in rows:
+        c.status = "sent"
+        c.sent_at = datetime.now(timezone.utc)
+        items.append(_cmd_to_dict(c))
+    db.commit()
+    return {"items": items}
+
+
+@router.post("/mt5/ea/results")
+def ea_report_result(payload: dict, db: Session = Depends(get_db)) -> dict:
+    """O EA reporta o resultado da execução do comando (sucesso ou falha)."""
+    cmd_id = (payload.get("id") or "").strip()
+    token = payload.get("token")
+    if not cmd_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "id é obrigatório")
+    cmd = db.get(MT5Command, cmd_id)
+    if cmd is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "comando não encontrado")
+    _require_ea_token(cmd.account_number, token)
+    success = bool(payload.get("success"))
+    cmd.status = "executed" if success else "failed"
+    cmd.result_message = (payload.get("message") or "")[:500] or None
+    from datetime import datetime, timezone
+
+    cmd.executed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": cmd.status}
+
+
 def _require_feature(db: Session, user: User, feature: str, message: str) -> None:
     """Bloqueia o recurso se o plano do usuário não o incluir (super_admin sempre passa)."""
     if user.role.value == "super_admin":
@@ -71,16 +198,22 @@ def add_mt5_account(payload: dict, user: User = Depends(get_current_user), db: S
     broker = payload.get("broker", "")
     # Permite múltiplas contas separadas por vírgula
     account_numbers = [a.strip() for a in accounts_str.split(",") if a.strip()]
+    current = len(list(db.scalars(select(MT5Account).where(MT5Account.user_id == user.id)).all()))
     created = []
     for num in account_numbers:
         existing = db.scalar(select(MT5Account).where(MT5Account.user_id == user.id, MT5Account.account_number == num))
         if existing:
             continue
+        if current + len(created) >= MT5_MAX_ACCOUNTS:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                f"Limite de {MT5_MAX_ACCOUNTS} contas MT5 atingido no plano Ultimate",
+            )
         acc = MT5Account(user_id=user.id, account_number=num, broker=broker, is_active=True)
         db.add(acc)
         created.append(num)
     db.commit()
-    return {"created": created, "count": len(created)}
+    return {"created": created, "count": len(created), "max": MT5_MAX_ACCOUNTS}
 
 
 @router.delete("/mt5/accounts/{account_id}", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
@@ -97,12 +230,29 @@ def my_features(user: User = Depends(get_current_user), db: Session = Depends(ge
     """Retorna as features liberadas para o plano do usuário."""
     plan_info = check_user_plan(db, user)
     limits = plan_info["limits"]
+
+    # Uso diário de ativos analisados (mesma chave de cache do live-analysis)
+    assets_used: int | None = None
+    if limits.get("assets_analyzed") and user.role.value != "super_admin":
+        try:
+            from app.infrastructure.cache import cache
+
+            key = f"analyzed_assets:{user.id}"
+            assets_used = len(cache.client.smembers(key) or set())
+        except Exception:
+            assets_used = None
+
+    mt5_count = len(list(db.scalars(select(MT5Account).where(MT5Account.user_id == user.id)).all()))
+
     return {
         "plan_code": plan_info["code"],
         "plan_status": plan_info["status"],
         "payment_ok": plan_info["payment_ok"],
         "features": {
             "assets_analyzed_limit": limits.get("assets_analyzed"),
+            "assets_analyzed_used": assets_used,
+            "mt5_accounts_used": mt5_count,
+            "mt5_accounts_max": MT5_MAX_ACCOUNTS,
             "robots_indicators": limits.get("robots_indicators", False),
             "copy_trading": limits.get("copy_trading", False),
             "live_trading_room": limits.get("live_trading_room", False),

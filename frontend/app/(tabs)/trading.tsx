@@ -99,7 +99,9 @@ export default function TradingPanelScreen() {
             <Text className="text-down text-xs mt-1">⚠ Regularize sua assinatura para manter o acesso.</Text>
           ) : (
             <Text className="text-ink-soft text-xs mt-1">
-              {f?.assets_analyzed_limit == null ? "Ativos analisados: ilimitados" : `Ativos analisados: ${f.assets_analyzed_limit}/dia`}
+              {f?.assets_analyzed_limit == null
+                ? "Ativos analisados: ilimitados"
+                : `Ativos analisados hoje: ${f.assets_analyzed_used ?? 0}/${f.assets_analyzed_limit}`}
             </Text>
           )}
         </View>

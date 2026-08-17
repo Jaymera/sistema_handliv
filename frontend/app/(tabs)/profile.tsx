@@ -30,13 +30,13 @@ export default function ProfileScreen() {
     {
       icon: "card",
       label: "Gerenciar cobrança",
-      sub: "Portal de pagamento (Stripe)",
+      sub: "Portal de pagamento Stripe",
       onPress: async () => {
         try {
           const res = await subscriptionsApi.portal();
           openUrl(res.portal_url);
         } catch {
-          openUrl(WHATSAPP);
+          openUrl("https://billing.stripe.com/p/login");
         }
       },
       color: C.accent,

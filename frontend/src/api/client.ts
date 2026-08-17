@@ -28,6 +28,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}, autoRefresh = true): Promise<T> {
   const accessToken = useAuthStore.getState().accessToken;
+  if (accessToken) useAuthStore.getState().touchActivity();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...((init.headers as Record<string, string>) ?? {}),
@@ -217,6 +218,9 @@ export const featuresApi = {
       payment_ok: boolean;
       features: {
         assets_analyzed_limit: number | null;
+        assets_analyzed_used: number | null;
+        mt5_accounts_used: number;
+        mt5_accounts_max: number;
         robots_indicators: boolean;
         copy_trading: boolean;
         live_trading_room: boolean;
@@ -231,8 +235,27 @@ export const featuresApi = {
 export const mt5Api = {
   list: () => request<{ items: { id: string; account_number: string; broker: string | null; is_active: boolean }[] }>("/mt5/accounts"),
   add: (accounts: string, broker?: string) =>
-    request<{ created: string[]; count: number }>("/mt5/accounts", { method: "POST", body: JSON.stringify({ accounts, broker }) }),
+    request<{ created: string[]; count: number; max: number }>("/mt5/accounts", { method: "POST", body: JSON.stringify({ accounts, broker }) }),
   remove: (id: string) => request<void>(`/mt5/accounts/${id}`, { method: "DELETE" }),
+};
+
+export const ordersApi = {
+  list: () =>
+    request<{
+      items: {
+        id: string;
+        account_number: string;
+        action: "buy" | "sell" | "close";
+        symbol: string | null;
+        volume: number | null;
+        status: "pending" | "sent" | "executed" | "failed";
+        result_message: string | null;
+        created_at: string | null;
+        executed_at: string | null;
+      }[];
+    }>("/mt5/orders"),
+  create: (body: { account_id?: string; account?: string; action: "buy" | "sell" | "close"; symbol?: string; volume?: number }) =>
+    request<{ id: string; status: string }>("/mt5/orders", { method: "POST", body: JSON.stringify(body) }),
 };
 
 export const tradesApi = {

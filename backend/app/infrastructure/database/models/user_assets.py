@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Date, text, Numeric
 from sqlalchemy.dialects.mysql import CHAR
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.infrastructure.database.base import Base, TimestampMixin
 
@@ -27,6 +27,8 @@ class WatchlistItem(Base, TimestampMixin):
         CHAR(36, charset="ascii"), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    asset: Mapped["Asset"] = relationship("Asset", lazy="joined")
 
 
 class Favorite(Base, TimestampMixin):

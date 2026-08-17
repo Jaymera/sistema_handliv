@@ -1,10 +1,15 @@
 import { Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useQuery } from "@tanstack/react-query";
 
+import { featuresApi } from "@/api/client";
 import { C } from "@/components/ui";
 import { TabBarIcon } from "@/components/TabBarIcon";
 
 export default function TabLayout() {
+  const { data: features } = useQuery({ queryKey: ["features"], queryFn: featuresApi.myFeatures, staleTime: 60_000 });
+  const isUltimate = !!features?.features.auto_robot;
+
   return (
     <>
       <StatusBar style="light" />
@@ -55,6 +60,7 @@ export default function TabLayout() {
           options={{
             title: "Robô",
             tabBarIcon: ({ color }) => <TabBarIcon name="hardware-chip" color={color} />,
+            ...(isUltimate ? {} : { href: null }),
           }}
         />
         <Tabs.Screen

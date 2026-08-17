@@ -73,23 +73,33 @@ DEFAULT_PLANS = [
 def bootstrap_super_admin() -> None:
     db = SessionLocal()
     try:
+        # Reparo de dados legados ANTES de qualquer SELECT (roles antigas quebram o ORM)
+        try:
+            _repair_data(db)
+            db.commit()
+        except Exception:
+            db.rollback()
         admin_email = settings.admin_email.lower()
-        existing = db.scalar(select(User).where(User.email == admin_email))
-        if existing is not None:
-            return
-        admin = User(
-            name=settings.admin_name,
-            email=admin_email,
-            password_hash=hash_password(settings.admin_password.get_secret_value()),
-            role=Role.SUPER_ADMIN,
-            force_password_change=True,
-            is_active=True,
-        )
-        db.add(admin)
+        existing = None
+        try:
+            existing = db.scalar(select(User).where(User.email == admin_email))
+        except Exception:
+            db.rollback()
+        if existing is None:
+            admin = User(
+                name=settings.admin_name,
+                email=admin_email,
+                password_hash=hash_password(settings.admin_password.get_secret_value()),
+                role=Role.SUPER_ADMIN,
+                force_password_change=True,
+                is_active=True,
+            )
+            db.add(admin)
+            logger.info("Super admin created %s", admin_email)
+        # Reparos idempotentes rodam sempre (planos desatualizados)
         _seed_plans(db)
         _seed_score_weights(db)
         db.commit()
-        logger.info("Super admin created %s", admin_email)
     except Exception:
         db.rollback()
         raise
@@ -98,10 +108,50 @@ def bootstrap_super_admin() -> None:
 
 
 def _seed_plans(db) -> None:
-    existing = set(db.scalars(select(Plan.code)).all())
+    existing = {p.code: p for p in db.scalars(select(Plan)).all()}
+    # Migração de códigos legados: pro -> start, premium -> ultimate
+    legacy_map = {"pro": "start", "premium": "ultimate"}
+    for legacy, new_code in legacy_map.items():
+        legacy_plan = existing.get(legacy)
+        if legacy_plan is not None and new_code not in existing:
+            legacy_plan.code = new_code
+            legacy_plan.name = new_code.capitalize()
+            existing[new_code] = legacy_plan
+            existing.pop(legacy)
     for p in DEFAULT_PLANS:
-        if p["code"] not in existing:
+        row = existing.get(p["code"])
+        if row is None:
             db.add(Plan(**p))
+        else:
+            # Repara planos antigos: nome, preços, stripe product e limits atualizados
+            row.name = p["name"]
+            row.stripe_product_id = p["stripe_product_id"]
+            row.price_monthly_cents = p["price_monthly_cents"]
+            row.price_yearly_cents = p["price_yearly_cents"]
+            row.limits_json = p["limits_json"]
+            row.is_active = True
+
+
+def _repair_data(db) -> None:
+    """Repara dados legados: enums gravados com NAME em vez do value e colunas faltantes."""
+    from sqlalchemy import inspect, text
+
+    try:
+        db.execute(text("UPDATE users SET role='super_admin' WHERE role='SUPER_ADMIN'"))
+        db.execute(text("UPDATE users SET role='user' WHERE role='USER'"))
+        # assets: asset_type legado em maiúsculas -> valores do enum (market já é maiúsculo por padrão)
+        db.execute(text("UPDATE assets SET asset_type=LOWER(asset_type) WHERE asset_type <> LOWER(asset_type)"))
+    except Exception:
+        pass
+
+    # Colunas adicionadas por migrations que bancos locais (create_all) podem não ter
+    try:
+        inspector = inspect(db.bind)
+        plan_cols = {c["name"] for c in inspector.get_columns("plans")}
+        if "stripe_product_id" not in plan_cols:
+            db.execute(text("ALTER TABLE plans ADD COLUMN stripe_product_id VARCHAR(128)"))
+    except Exception:
+        pass
 
 
 def _seed_score_weights(db) -> None:

@@ -1,15 +1,55 @@
 import "../src/global.css";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
 
 import { adminApi } from "@/api/client";
-import { Badge, C, Card, Loading, SectionTitle } from "@/components/ui";
+import { Badge, C, Card, GhostButton, Loading, PrimaryButton, SectionTitle } from "@/components/ui";
 
 export default function AdminScreen() {
   const qc = useQueryClient();
   const { data: weights, isLoading: wLoading } = useQuery({ queryKey: ["weights"], queryFn: adminApi.weights });
   const { data: usersData, isLoading: uLoading } = useQuery({ queryKey: ["admin-users"], queryFn: adminApi.users });
+
+  const [tech, setTech] = useState("");
+  const [valu, setValu] = useState("");
+  const [sent, setSent] = useState("");
+  const [minConf, setMinConf] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (weights) {
+      setTech(String(Math.round(weights.technical_weight * 100)));
+      setValu(String(Math.round(weights.valuation_weight * 100)));
+      setSent(String(Math.round(weights.sentiment_weight * 100)));
+      setMinConf(String(weights.min_confidence));
+    }
+  }, [weights]);
+
+  const saveWeights = useMutation({
+    mutationFn: () => {
+      const t = parseInt(tech, 10) / 100;
+      const v = parseInt(valu, 10) / 100;
+      const s = parseInt(sent, 10) / 100;
+      const total = t + v + s;
+      if (Math.round(total * 100) !== 100) throw new Error(`A soma dos pesos deve ser 100% (atual: ${Math.round(total * 100)}%)`);
+      return adminApi.updateWeights({
+        technical_weight: t,
+        valuation_weight: v,
+        sentiment_weight: s,
+        min_confidence: parseInt(minConf, 10) || 0,
+      });
+    },
+    onSuccess: () => {
+      setSaved(true);
+      setSaveError(null);
+      setTimeout(() => setSaved(false), 2500);
+      qc.invalidateQueries({ queryKey: ["weights"] });
+    },
+    onError: (e: any) => setSaveError(e?.message ?? "Erro ao salvar"),
+  });
 
   const toggleActive = async (userId: string, current: boolean) => {
     try {
@@ -41,22 +81,29 @@ export default function AdminScreen() {
       {wLoading ? (
         <Loading />
       ) : weights ? (
-        <Card className="p-4 mb-6 flex-row justify-between">
-          <View className="items-center flex-1">
-            <Text className="text-accent text-lg font-bold">{Math.round(weights.technical_weight * 100)}%</Text>
-            <Text className="text-ink-faint text-xs">Técnica</Text>
+        <Card className="p-4 mb-6">
+          <View className="flex-row gap-2 mb-1">
+            <WeightInput label="TÉCNICA %" value={tech} onChange={setTech} color={C.accent} />
+            <WeightInput label="VALUATION %" value={valu} onChange={setValu} color={C.up} />
+            <WeightInput label="SENTIMENTO %" value={sent} onChange={setSent} color={C.amber} />
           </View>
-          <View className="items-center flex-1">
-            <Text className="text-up text-lg font-bold">{Math.round(weights.valuation_weight * 100)}%</Text>
-            <Text className="text-ink-faint text-xs">Valuation</Text>
-          </View>
-          <View className="items-center flex-1">
-            <Text className="text-amber text-lg font-bold">{Math.round(weights.sentiment_weight * 100)}%</Text>
-            <Text className="text-ink-faint text-xs">Sentimento</Text>
-          </View>
-          <View className="items-center flex-1">
-            <Text className="text-ink text-lg font-bold">{weights.min_confidence}</Text>
-            <Text className="text-ink-faint text-xs">Conf. mín.</Text>
+          <WeightInput label="CONFIANÇA MÍNIMA (0-100)" value={minConf} onChange={setMinConf} color={C.ink} />
+          {saveError ? <Text className="text-down text-sm mb-2">{saveError}</Text> : null}
+          {saved ? <Text className="text-up text-sm mb-2">Pesos salvos com sucesso!</Text> : null}
+          <View className="flex-row gap-2">
+            <View className="flex-1">
+              <PrimaryButton label="Salvar pesos" small loading={saveWeights.isPending} onPress={() => saveWeights.mutate()} />
+            </View>
+            <View className="flex-1">
+              <GhostButton
+                label="Restaurar padrão"
+                small
+                color={C.soft}
+                onPress={() => {
+                  setTech("40"); setValu("35"); setSent("25"); setMinConf("50");
+                }}
+              />
+            </View>
           </View>
         </Card>
       ) : null}
@@ -125,5 +172,22 @@ export default function AdminScreen() {
         <Text className="text-ink-soft">Nenhum usuário.</Text>
       )}
     </ScrollView>
+  );
+}
+
+function WeightInput({ label, value, onChange, color }: { label: string; value: string; onChange: (v: string) => void; color: string }) {
+  return (
+    <View className="flex-1 mb-2">
+      <Text className="text-[10px] font-bold mb-1" style={{ color }}>
+        {label}
+      </Text>
+      <TextInput
+        className="bg-night-700 border rounded-xl px-3 py-2.5 text-ink text-center"
+        style={{ borderColor: color + "44" }}
+        value={value}
+        onChangeText={onChange}
+        keyboardType="numeric"
+      />
+    </View>
   );
 }
