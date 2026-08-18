@@ -10,7 +10,6 @@ export default function TabLayout() {
   const { data: features } = useQuery({ queryKey: ["features"], queryFn: featuresApi.myFeatures, staleTime: 60_000 });
   const canMT5 = !!features?.features.trading_panel;
   const isUltimate = !!features?.features.auto_robot;
-
   return (
     <>
       <StatusBar style="light" />
