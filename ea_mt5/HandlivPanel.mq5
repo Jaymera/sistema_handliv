@@ -29,6 +29,7 @@ input group "== API Handliv =="
 input string InpApiUrl      = "https://api.handliv.com/api/v1"; // API Base URL
 input string InpApiToken    = "";                                // Secret (MT5_API_TOKEN do backend)
 input int    InpPollSeconds = 1;                                 // Intervalo de consulta (segundos)
+input int    InpStatsSeconds = 30;                               // Intervalo de envio de estatisticas (segundos)
 
 input group "== Painel local =="
 input double InpVolume      = 0.10;   // Volume padrao (lotes)
@@ -39,8 +40,10 @@ input int    InpSlippage    = 10;     // Desvio maximo (points)
 CTrade   trade;
 string   g_symbol;
 datetime g_lastPoll = 0;
+datetime g_lastStats = 0;
 bool     g_apiOk    = false;
 string   g_status   = "Conectando...";
+double   g_peakEquity = 0.0;   // pico de equity (para calculo do drawdown)
 
 // Painel
 #define PNL_NAME   "HLVPNL"
@@ -201,10 +204,104 @@ void ReportResult(const string id, bool success, const string message)
 }
 
 //+------------------------------------------------------------------+
+//| Estatisticas: P/L por periodo a partir do historico de trades    |
+//+------------------------------------------------------------------+
+double HistoryProfit(datetime from, datetime to)
+{
+   if(!HistorySelect(from, to)) return 0.0;
+   double total = 0.0;
+   int n = HistoryDealsTotal();
+   for(int i = 0; i < n; i++)
+   {
+      ulong ticket = HistoryDealGetTicket(i);
+      if(ticket == 0) continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
+      long t = HistoryDealGetInteger(ticket, DEAL_TIME);
+      if(t < from || t >= to) continue;
+      double p = HistoryDealGetDouble(ticket, DEAL_PROFIT)
+               + HistoryDealGetDouble(ticket, DEAL_SWAP)
+               + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+      total += p;
+   }
+   return total;
+}
+
+void CountWinLoss(int &wins, int &losses)
+{
+   wins = 0; losses = 0;
+   datetime from = 0;
+   datetime to   = TimeCurrent() + 86400;
+   if(!HistorySelect(from, to)) return;
+   int n = HistoryDealsTotal();
+   for(int i = 0; i < n; i++)
+   {
+      ulong ticket = HistoryDealGetTicket(i);
+      if(ticket == 0) continue;
+      if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
+      double p = HistoryDealGetDouble(ticket, DEAL_PROFIT)
+               + HistoryDealGetDouble(ticket, DEAL_SWAP)
+               + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+      if(p >= 0) wins++; else losses++;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Coleta e envia estatisticas da conta para o site                 |
+//+------------------------------------------------------------------+
+void SendStats()
+{
+   datetime now  = TimeCurrent();
+   datetime day0 = StringToTime(TimeToString(now, TIME_DATE));           // 00:00 de hoje
+   MqlDateTime mq;
+   TimeToStruct(now, mq);
+   mq.hour = 0; mq.min = 0; mq.sec = 0;
+   datetime week0 = StructToTime(mq) - ((mq.day_of_week + 6) % 7) * 86400; // segunda-feira 00:00
+   mq.day = 1;
+   datetime month0 = StructToTime(mq);                                    // dia 1 do mes 00:00
+
+   double equity = AccountInfoDouble(ACCOUNT_EQUITY);
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+
+   // Drawdown: acompanha o pico de equity desde o inicio do EA
+   if(equity > g_peakEquity) g_peakEquity = equity;
+   double dd = 0.0;
+   if(g_peakEquity > 0) dd = (g_peakEquity - equity) / g_peakEquity * 100.0;
+
+   int wins = 0, losses = 0;
+   CountWinLoss(wins, losses);
+
+   string json = StringFormat(
+      "{\"account\":\"%s\",\"login\":\"%s\",\"token\":\"%s\","
+      "\"currency\":\"%s\","
+      "\"equity\":%.2f,\"balance\":%.2f,"
+      "\"margin\":%.2f,\"margin_level\":%.2f,\"floating_pl\":%.2f,"
+      "\"dd_percent\":%.2f,"
+      "\"profit_day\":%.2f,\"profit_week\":%.2f,\"profit_month\":%.2f,\"profit_total\":%.2f,"
+      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d}",
+      IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
+      IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
+      AccountToken(),
+      AccountInfoString(ACCOUNT_CURRENCY),
+      equity, balance,
+      AccountInfoDouble(ACCOUNT_MARGIN),
+      AccountInfoDouble(ACCOUNT_MARGIN_LEVEL),
+      AccountInfoDouble(ACCOUNT_PROFIT),
+      dd,
+      HistoryProfit(day0, now + 60),
+      HistoryProfit(week0, now + 60),
+      HistoryProfit(month0, now + 60),
+      HistoryProfit(0, now + 60),
+      wins, losses, wins + losses,
+      PositionsTotal());
+   string resp;
+   if(HttpPost(InpApiUrl + "/mt5/ea/stats", json, resp))
+      g_status = "Stats OK " + TimeToString(now, TIME_SECONDS);
+}
+
+//+------------------------------------------------------------------+
 //| Consulta comandos pendentes                                      |
 //+------------------------------------------------------------------+
-void PollCommands()
-{
+void PollCommands(){
    string url = InpApiUrl + "/mt5/ea/commands?account=" +
                 IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) +
                 "&token=" + AccountToken();
@@ -358,6 +455,8 @@ int OnInit()
    trade.SetDeviationInPoints(InpSlippage);
    trade.SetTypeFillingBySymbol(g_symbol);
 
+   g_peakEquity = MathMax(AccountInfoDouble(ACCOUNT_EQUITY), AccountInfoDouble(ACCOUNT_BALANCE));
+
    CreatePanel();
    EventSetTimer(MathMax(1, InpPollSeconds));
    Print("HandlivPanel iniciado. Conta=", AccountInfoInteger(ACCOUNT_LOGIN), " API=", InpApiUrl);
@@ -372,9 +471,17 @@ void OnDeinit(const int reason)
 
 void OnTimer()
 {
-   if(TimeCurrent() - g_lastPoll < MathMax(1, InpPollSeconds)) return;
-   g_lastPoll = TimeCurrent();
-   PollCommands();
+   datetime now = TimeCurrent();
+   if(now - g_lastPoll >= MathMax(1, InpPollSeconds))
+   {
+      g_lastPoll = now;
+      PollCommands();
+   }
+   if(now - g_lastStats >= MathMax(5, InpStatsSeconds))
+   {
+      g_lastStats = now;
+      SendStats();
+   }
 }
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)

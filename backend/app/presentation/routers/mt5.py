@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.infrastructure.database.models import MT5Account, MT5Command, TradeRecord, User
+from app.infrastructure.database.models import MT5Account, MT5AccountStats, MT5Command, TradeRecord, User
 from app.infrastructure.database.session import get_db
 from app.presentation.deps.auth import get_current_user
 from app.presentation.routers.subscriptions import check_user_plan
@@ -68,7 +68,7 @@ def _cmd_to_dict(c: MT5Command) -> dict:
 @router.post("/mt5/orders", status_code=status.HTTP_201_CREATED)
 def create_order(payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
     """Cria um comando (buy/sell/close) para ser executado pelo EA na conta MT5 informada."""
-    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    _require_feature(db, user, "trading_panel", "Painel de Execução MT5 disponível nos planos Start e Ultimate")
     action = (payload.get("action") or "").strip().lower()
     if action not in ("buy", "sell", "close"):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "action deve ser buy, sell ou close")
@@ -117,7 +117,7 @@ def create_order(payload: dict, user: User = Depends(get_current_user), db: Sess
 
 @router.get("/mt5/orders")
 def list_orders(user: User = Depends(get_current_user), db: Session = Depends(get_db), limit: int = Query(20, le=100)) -> dict:
-    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    _require_feature(db, user, "trading_panel", "Painel de Execução MT5 disponível nos planos Start e Ultimate")
     rows = db.scalars(
         select(MT5Command)
         .where(MT5Command.user_id == user.id)
@@ -184,14 +184,14 @@ def _require_feature(db: Session, user: User, feature: str, message: str) -> Non
 
 @router.get("/mt5/accounts")
 def list_mt5_accounts(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
-    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    _require_feature(db, user, "trading_panel", "Contas MT5 disponíveis nos planos Start e Ultimate")
     rows = db.scalars(select(MT5Account).where(MT5Account.user_id == user.id).order_by(MT5Account.created_at.desc())).all()
     return {"items": [{"id": str(r.id), "account_number": r.account_number, "broker": r.broker, "is_active": r.is_active} for r in rows]}
 
 
 @router.post("/mt5/accounts", status_code=status.HTTP_201_CREATED)
 def add_mt5_account(payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
-    _require_feature(db, user, "auto_robot", "Robô Automático disponível apenas no plano Ultimate")
+    _require_feature(db, user, "trading_panel", "Contas MT5 disponíveis nos planos Start e Ultimate")
     accounts_str = payload.get("accounts", "").strip()
     if not accounts_str:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "accounts é obrigatório")
@@ -222,7 +222,108 @@ def delete_mt5_account(account_id: str, user: User = Depends(get_current_user), 
     if acc is None or acc.user_id != user.id:
         return
     db.delete(acc)
+    # Remove também as estatísticas e comandos vinculados ao número da conta
+    st = db.scalar(select(MT5AccountStats).where(MT5AccountStats.account_number == acc.account_number))
+    if st is not None:
+        db.delete(st)
     db.commit()
+
+
+# ===== Estatísticas da conta MT5 (reportadas pelo EA HandlivPanel) =====
+
+_MONEY_FIELDS = (
+    "equity",
+    "balance",
+    "margin",
+    "margin_level",
+    "floating_pl",
+    "dd_percent",
+    "profit_day",
+    "profit_week",
+    "profit_month",
+    "profit_total",
+)
+
+
+def _stats_to_dict(s: MT5AccountStats) -> dict:
+    return {
+        "login": s.login,
+        "currency": s.currency,
+        "equity": float(s.equity),
+        "balance": float(s.balance),
+        "margin": float(s.margin),
+        "margin_level": float(s.margin_level),
+        "floating_pl": float(s.floating_pl),
+        "dd_percent": float(s.dd_percent),
+        "profit_day": float(s.profit_day),
+        "profit_week": float(s.profit_week),
+        "profit_month": float(s.profit_month),
+        "profit_total": float(s.profit_total),
+        "win_trades": s.win_trades,
+        "loss_trades": s.loss_trades,
+        "total_trades": s.total_trades,
+        "open_positions": s.open_positions,
+        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+    }
+
+
+@router.post("/mt5/ea/stats")
+def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
+    """O EA HandlivPanel reporta periodicamente as estatísticas da conta (DD, P/L, win rate)."""
+    from decimal import Decimal
+
+    account = (str(payload.get("account") or payload.get("login") or "")).strip()
+    token = payload.get("token")
+    if not account:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "account é obrigatório")
+    _require_ea_token(account, token)
+
+    def _num(key: str) -> Decimal:
+        try:
+            return Decimal(str(round(float(str(payload.get(key) or 0).replace(",", ".")), 2)))
+        except (TypeError, ValueError):
+            return Decimal("0")
+
+    def _int(key: str) -> int:
+        try:
+            return int(float(str(payload.get(key) or 0)))
+        except (TypeError, ValueError):
+            return 0
+
+    row = db.scalar(select(MT5AccountStats).where(MT5AccountStats.account_number == account))
+    if row is None:
+        row = MT5AccountStats(account_number=account)
+        db.add(row)
+    row.login = str(payload.get("login") or account)
+    row.currency = (str(payload.get("currency") or "USD"))[:16]
+    for key in _MONEY_FIELDS:
+        setattr(row, key, _num(key))
+    row.win_trades = _int("win_trades")
+    row.loss_trades = _int("loss_trades")
+    row.total_trades = _int("total_trades")
+    row.open_positions = _int("open_positions")
+    db.commit()
+    return {"status": "ok"}
+
+
+@router.get("/mt5/stats")
+def my_mt5_stats(user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    """Estatísticas das contas MT5 do usuário (P/L dia/semana/mês/total, DD, win rate). Start e Ultimate."""
+    _require_feature(db, user, "trading_panel", "Estatísticas MT5 disponíveis nos planos Start e Ultimate")
+    accounts = db.scalars(select(MT5Account).where(MT5Account.user_id == user.id).order_by(MT5Account.created_at.desc())).all()
+    items = []
+    for acc in accounts:
+        st = db.scalar(select(MT5AccountStats).where(MT5AccountStats.account_number == acc.account_number))
+        items.append(
+            {
+                "id": str(acc.id),
+                "account_number": acc.account_number,
+                "broker": acc.broker,
+                "is_active": acc.is_active,
+                "stats": _stats_to_dict(st) if st is not None else None,
+            }
+        )
+    return {"items": items}
 
 
 @router.get("/me/features")

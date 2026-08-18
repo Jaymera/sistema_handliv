@@ -8,6 +8,7 @@ import { TabBarIcon } from "@/components/TabBarIcon";
 
 export default function TabLayout() {
   const { data: features } = useQuery({ queryKey: ["features"], queryFn: featuresApi.myFeatures, staleTime: 60_000 });
+  const canMT5 = !!features?.features.trading_panel;
   const isUltimate = !!features?.features.auto_robot;
 
   return (
@@ -53,6 +54,14 @@ export default function TabLayout() {
           options={{
             title: "Trades",
             tabBarIcon: ({ color }) => <TabBarIcon name="stats-chart" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="mt5"
+          options={{
+            title: "MT5",
+            tabBarIcon: ({ color }) => <TabBarIcon name="speedometer" color={color} />,
+            ...(canMT5 ? {} : { href: null }),
           }}
         />
         <Tabs.Screen

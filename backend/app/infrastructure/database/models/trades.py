@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text, text
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -45,3 +45,29 @@ class MT5Command(Base, TimestampMixin):
     result_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class MT5AccountStats(Base, TimestampMixin):
+    """Snapshot das estatísticas da conta MT5 reportadas pelo EA HandlivPanel (DD, P/L, win rate)."""
+
+    __tablename__ = "mt5_account_stats"
+    __table_args__ = (UniqueConstraint("account_number", name="uq_mt5_stats_account"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(CHAR(36, charset="ascii"), primary_key=True, default=_uuid)
+    account_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    login: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    currency: Mapped[str] = mapped_column(String(16), nullable=False, default="USD")
+    equity: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    balance: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    margin: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    margin_level: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    floating_pl: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    dd_percent: Mapped[Decimal] = mapped_column(Numeric(8, 2), nullable=False, default=0)
+    profit_day: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    profit_week: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    profit_month: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    profit_total: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    win_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    loss_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    open_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

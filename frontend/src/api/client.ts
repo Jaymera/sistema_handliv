@@ -239,6 +239,31 @@ export const mt5Api = {
   remove: (id: string) => request<void>(`/mt5/accounts/${id}`, { method: "DELETE" }),
 };
 
+export interface MT5Stats {
+  login: string;
+  currency: string;
+  equity: number;
+  balance: number;
+  margin: number;
+  margin_level: number;
+  floating_pl: number;
+  dd_percent: number;
+  profit_day: number;
+  profit_week: number;
+  profit_month: number;
+  profit_total: number;
+  win_trades: number;
+  loss_trades: number;
+  total_trades: number;
+  open_positions: number;
+  updated_at: string | null;
+}
+
+export const statsApi = {
+  list: () =>
+    request<{ items: { id: string; account_number: string; broker: string | null; is_active: boolean; stats: MT5Stats | null }[] }>("/mt5/stats"),
+};
+
 export const ordersApi = {
   list: () =>
     request<{

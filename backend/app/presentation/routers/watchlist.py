@@ -41,7 +41,7 @@ def add_to_watchlist(symbol: str, user=Depends(get_current_user), db: Session = 
         raise HTTPException(status.HTTP_409_CONFLICT, "already in watchlist")
     if _limit_reached(db, user):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "plan_limit_exceeded")
-    next_order = db.scalar(select(WatchlistItem).where(WatchlistItem.user_id == user.id).order_by(WatchlistItem.sort_order.desc())) or 0
+    next_order = db.scalar(select(func.max(WatchlistItem.sort_order)).where(WatchlistItem.user_id == user.id)) or 0
     item = WatchlistItem(user_id=user.id, asset_id=asset.id, sort_order=next_order + 1)
     db.add(item)
     db.commit()
