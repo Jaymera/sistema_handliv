@@ -65,7 +65,15 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
         import stripe
 
         stripe.api_key = settings.stripe_secret_key.get_secret_value()
-        event = stripe.Webhook.construct_event(payload, sig, "whsec_xxx")
+        secret = settings.stripe_webhook_secret.get_secret_value()
+        if not secret:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                "STRIPE_WEBHOOK_SECRET não configurado no backend",
+            )
+        event = stripe.Webhook.construct_event(payload, sig, secret)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
 
@@ -89,7 +97,13 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
                 sub.stripe_customer_id = customer_id
                 sub.stripe_subscription_id = sub_id
                 sub.status = SubscriptionStatus.ACTIVE
-                sub.current_period_end = datetime.now(timezone.utc)
+                # Busca período/status reais na Stripe
+                if sub_id:
+                    try:
+                        stripe_sub = stripe.Subscription.retrieve(sub_id)
+                        _apply_stripe_sub(db, sub, stripe_sub, keep_plan=True)
+                    except Exception:
+                        pass
                 db.commit()
 
     elif event_type in ("invoice.paid", "invoice.payment_succeeded"):
@@ -163,6 +177,83 @@ def cancel_subscription(user: User = Depends(get_current_user), db: Session = De
     db.commit()
 
 
+_SUB_STATUS_MAP = {
+    "active": SubscriptionStatus.ACTIVE,
+    "trialing": SubscriptionStatus.TRIALING,
+    "past_due": SubscriptionStatus.PAST_DUE,
+    "unpaid": SubscriptionStatus.PAST_DUE,
+    "canceled": SubscriptionStatus.CANCELED,
+    "incomplete_expired": SubscriptionStatus.CANCELED,
+}
+
+
+def _apply_stripe_sub(db: Session, sub: Subscription, stripe_sub, keep_plan: bool = False) -> None:
+    """Aplica status/período/plano de uma Subscription da Stripe no nosso registro."""
+    sub.stripe_subscription_id = stripe_sub.id
+    sub.status = _SUB_STATUS_MAP.get(stripe_sub.status, SubscriptionStatus.ACTIVE)
+
+    # current_period_end: API nova fica no item; antiga no objeto raiz
+    period_end = None
+    items = getattr(getattr(stripe_sub, "items", None), "data", None) or []
+    if items:
+        period_end = getattr(items[0], "current_period_end", None)
+    if not period_end:
+        period_end = getattr(stripe_sub, "current_period_end", None)
+    if period_end:
+        sub.current_period_end = datetime.fromtimestamp(period_end, tz=timezone.utc)
+
+    # Descobre o plano pelo produto da Stripe
+    product = None
+    if items and getattr(items[0], "price", None):
+        product = items[0].price.product
+    elif getattr(stripe_sub, "plan", None):
+        product = stripe_sub.plan.product
+    if product and not keep_plan:
+        plan = db.scalar(select(Plan).where(Plan.stripe_product_id == product))
+        if plan:
+            sub.plan_id = plan.id
+
+
+def sync_user_subscription_from_stripe(db: Session, user: User) -> bool:
+    """Repara a assinatura do usuário direto na Stripe (ex.: webhook não chegou/falhou).
+
+    Retorna True se criou/atualizou o registro. Best-effort: qualquer erro é silencioso.
+    """
+    if not settings.stripe_secret_key.get_secret_value():
+        return False
+    try:
+        import stripe
+
+        stripe.api_key = settings.stripe_secret_key.get_secret_value()
+        sub = db.scalar(select(Subscription).where(Subscription.user_id == user.id))
+        if sub is not None and sub.stripe_subscription_id:
+            return False  # já vinculado; check_user_plan mantém sincronizado
+
+        customers = stripe.Customer.list(email=user.email, limit=1).data
+        if not customers:
+            return False
+        cust = customers[0]
+        stripe_sub = stripe.Subscription.list(customer=cust.id, status="active", limit=5).data
+        if not stripe_sub:
+            stripe_sub = stripe.Subscription.list(customer=cust.id, status="trialing", limit=5).data
+        if not stripe_sub:
+            return False
+
+        if sub is None:
+            sub = Subscription(user_id=user.id, plan_id=None)
+            db.add(sub)
+        sub.stripe_customer_id = cust.id
+        _apply_stripe_sub(db, sub, stripe_sub[0])
+        if sub.plan_id is None:
+            db.rollback()
+            return False
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        return False
+
+
 def check_user_plan(db: Session, user: User) -> dict:
     """Verifica o plano do usuário. Retorna {code, limits, status, payment_ok}.
     Se houver stripe_subscription_id, consulta a Stripe em tempo real para confirmar o pagamento.
@@ -178,28 +269,10 @@ def check_user_plan(db: Session, user: User) -> dict:
             import stripe
             stripe.api_key = settings.stripe_secret_key.get_secret_value()
             stripe_sub = stripe.Subscription.retrieve(sub.stripe_subscription_id)
-            # Mapear status do Stripe para nosso enum
-            stripe_status = stripe_sub.status
-            from datetime import datetime, timezone
-            if stripe_status == "active":
-                sub.status = SubscriptionStatus.ACTIVE
-            elif stripe_status == "trialing":
-                sub.status = SubscriptionStatus.TRIALING
-            elif stripe_status in ("past_due", "unpaid"):
-                sub.status = SubscriptionStatus.PAST_DUE
-            elif stripe_status in ("canceled", "incomplete_expired"):
-                sub.status = SubscriptionStatus.CANCELED
-            # Atualizar período
-            if stripe_sub.current_period_end:
-                sub.current_period_end = datetime.fromtimestamp(stripe_sub.current_period_end, tz=timezone.utc)
-            # Descobrir o plano pelo produto do Stripe
-            if stripe_sub.plan and stripe_sub.plan.product:
-                plan = db.scalar(select(Plan).where(Plan.stripe_product_id == stripe_sub.plan.product))
-                if plan:
-                    sub.plan_id = plan.id
+            _apply_stripe_sub(db, sub, stripe_sub)
             db.commit()
         except Exception:
-            pass  # Se falhar, continua com o que tem no banco
+            db.rollback()  # Se falhar, continua com o que tem no banco
 
     payment_ok = sub.status in (SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIALING)
     if sub.status == SubscriptionStatus.PAST_DUE:

@@ -120,7 +120,13 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
     # Verificar pagamento (exceto super_admin)
     if user.role != Role.SUPER_ADMIN:
-        from app.presentation.routers.subscriptions import check_user_plan
+        from app.presentation.routers.subscriptions import check_user_plan, sync_user_subscription_from_stripe
+
+        # Auto-reparo: se pagou na Stripe mas o webhook não registrou, sincroniza agora
+        try:
+            sync_user_subscription_from_stripe(db, user)
+        except Exception:
+            db.rollback()
         plan_info = check_user_plan(db, user)
         if not plan_info["payment_ok"]:
             raise HTTPException(status.HTTP_402_PAYMENT_REQUIRED, "Pagamento atrasado. Regularize sua assinatura para continuar.")

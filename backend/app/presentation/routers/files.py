@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.infrastructure.database.models import FileAsset, FileCategory, MinPlan
 from app.infrastructure.database.session import get_db
-from app.presentation.deps.auth import get_current_user, require_super_admin
+from app.presentation.deps.auth import current_user_with_plan, require_super_admin
 
 router = APIRouter()
 
@@ -27,11 +27,12 @@ def _storage_root() -> Path:
 
 
 def _plan_rank(plan_code: str | None) -> int:
-    return {"free": 0, "pro": 1, "premium": 2}.get(plan_code or "free", 0)
+    # start/ultimate são os códigos atuais; pro/premium são legados
+    return {"free": 0, "start": 1, "ultimate": 2, "pro": 1, "premium": 2}.get(plan_code or "free", 0)
 
 
 @router.get("/files")
-def list_files(user=Depends(get_current_user), db: Session = Depends(get_db), category: str | None = None) -> dict:
+def list_files(user=Depends(current_user_with_plan), db: Session = Depends(get_db), category: str | None = None) -> dict:
     user_plan = getattr(user, "_plan_payload", None) or {"code": "free"}
     user_rank = _plan_rank(user_plan["code"])
     stmt = select(FileAsset).where(FileAsset.is_active == True)  # noqa: E712
@@ -56,7 +57,7 @@ def list_files(user=Depends(get_current_user), db: Session = Depends(get_db), ca
 
 
 @router.post("/files/{file_id}/download-url")
-def download_url(file_id: uuid.UUID, user=Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+def download_url(file_id: uuid.UUID, user=Depends(current_user_with_plan), db: Session = Depends(get_db)) -> dict:
     user_plan = getattr(user, "_plan_payload", None) or {"code": "free"}
     user_rank = _plan_rank(user_plan["code"])
     f = db.get(FileAsset, file_id)
@@ -71,7 +72,7 @@ def download_url(file_id: uuid.UUID, user=Depends(get_current_user), db: Session
 
 
 @router.get("/files/{file_id}/raw")
-def download_raw(file_id: uuid.UUID, user=Depends(get_current_user), db: Session = Depends(get_db)):
+def download_raw(file_id: uuid.UUID, user=Depends(current_user_with_plan), db: Session = Depends(get_db)):
     from fastapi.responses import FileResponse
 
     user_plan = getattr(user, "_plan_payload", None) or {"code": "free"}
