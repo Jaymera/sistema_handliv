@@ -966,26 +966,27 @@ int hatr96,hatr672,hrsi,hma,hstd;
  lizong_49(false); 
  }
 //OnTimer <<==--------   --------
- void OnChartEvent( const int Para_0_in,const long & Para_1_lo,const double & Para_2_do,const string & Para_3_st,const int id,
+ void OnChartEvent( const int id,
                   const long &lparam,
                   const double &dparam,
                   const string &sparam)
  {
  
- if(Para_0_in==CHARTEVENT_OBJECT_CLICK) HLVPanelPoll();
- if(id==CHARTEVENT_OBJECT_CLICK)        HLVPanelPoll();
- if ( Para_0_in != 1 )   return;
- lizong_48(Para_3_st); 
+ if(id==CHARTEVENT_OBJECT_CLICK) HLVPanelPoll();
+ if ( id != 1 )   return;
+ lizong_48(sparam);
  }
 //OnChartEvent <<==--------   --------
- void OnDeinit( const int Para_0_in,const int reason)
- { 
- 
+ void OnDeinit( const int reason)
+ {
+
+ HLVPanelDelete();
+
  string     tmp_st_1;
 
- EventKillTimer(); 
+ EventKillTimer();
  tmp_st_1 = "";
- switch(Para_0_in)
+ switch(reason)
  {
    case 6 :
    tmp_st_1 = "Account changed";
