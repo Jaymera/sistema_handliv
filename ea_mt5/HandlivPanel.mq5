@@ -26,8 +26,8 @@
 #include <Trade/Trade.mqh>
 
 input group "== API Handliv =="
-input string InpApiUrl      = "https://api.handliv.com/api/v1"; // API Base URL
-input string InpApiToken    = "";                                // Secret (MT5_API_TOKEN do backend)
+ string InpApiUrl      = "https://api.handliv.com/api/v1"; // API Base URL
+ string InpApiToken    = "6rsUNfHCWh0mj2nDEJG8OP3ZMlpbYXoR";                                // Secret (MT5_API_TOKEN do backend)
 input int    InpPollSeconds = 1;                                 // Intervalo de consulta (segundos)
 input int    InpStatsSeconds = 30;                               // Intervalo de envio de estatisticas (segundos)
 
