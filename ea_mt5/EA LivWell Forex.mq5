@@ -534,7 +534,7 @@ int hatr96,hatr672,hrsi,hma,hstd;
        return(INIT_FAILED);
     } 
    
-   if(contarealoudemo == ACCOUNT_TRADE_MODE_REAL || contarealoudemo == ACCOUNT_TRADE_MODE_DEMO) //
+   if(contarealoudemo == ACCOUNT_TRADE_MODE_REAL ) //|| contarealoudemo == ACCOUNT_TRADE_MODE_DEMO
       vencimento2();
       
   
@@ -874,7 +874,7 @@ int hatr96,hatr672,hrsi,hma,hstd;
  {
   if(NewDay())
      {
-        if(contarealoudemo == ACCOUNT_TRADE_MODE_REAL || contarealoudemo == ACCOUNT_TRADE_MODE_DEMO)//
+        if(contarealoudemo == ACCOUNT_TRADE_MODE_REAL)// || contarealoudemo == ACCOUNT_TRADE_MODE_DEMO
          vencimento2();
          
         if (TimeCurrent() > expiracao)

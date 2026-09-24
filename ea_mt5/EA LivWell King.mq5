@@ -346,9 +346,9 @@ string CJAVal::Unescape(string a)
 }
 
 //+------------------------------------------------------------------+
-//|                                       Quantum Queen MT5 V3.52.mq5 |
-//|                          Copyright 2026, Quantum Trading Systems |
-//|                                             https://www.mql5.com  |
+//|                                       EA LivWell King MT5 v3.52  |
+//|                            Copyright 2026 - Handliv (R)          |
+//|                                       https://handliv.com        |
 //+------------------------------------------------------------------+
 #property copyright   "2023 - Handliv®️"
 #property link        "https://handliv.com/index.html"
@@ -565,7 +565,7 @@ public:
 };
 
 //+------------------------------------------------------------------+
-//| CQuantumDashboard Class - Advanced UI Replica                    |
+//| Painel Handliv (Dashboard) do EA LivWell King                     |
 //+------------------------------------------------------------------+
 class CQuantumDashboard
 {
@@ -580,14 +580,17 @@ private:
    double  m_cached_daily_profit;
 
 public:
-   CQuantumDashboard() : m_name("QQ_Dashboard"), m_w(460), m_h(560), m_x(40), m_y(20), m_paused(false), m_last_profit_calc_ms(0), m_last_profit_day(0), m_cached_daily_profit(0.0) {}
+   CQuantumDashboard() : m_name("HLV_Dashboard"), m_w(480), m_h(710), m_x(40), m_y(20), m_paused(false), m_last_profit_calc_ms(0), m_last_profit_day(0), m_cached_daily_profit(0.0) {}
    
-   bool Init() {
-      if(!m_canvas.CreateBitmapLabel(m_name, m_x, m_y, m_w, m_h, COLOR_FORMAT_ARGB_NORMALIZE))
-         return false;
-      Update();
-      return true;
-   }
+    bool Init() {
+       if(IsOn(InpPanelCompact)) { m_w = 400; m_h = 560; }
+       g_panel_w = m_w;
+       g_panel_scale = (double)m_h / 710.0;
+       if(!m_canvas.CreateBitmapLabel(m_name, m_x, m_y, m_w, m_h, COLOR_FORMAT_ARGB_NORMALIZE))
+          return false;
+       Update();
+       return true;
+    }
    
    void Deinit() {
       m_canvas.Destroy();
@@ -597,130 +600,97 @@ public:
 
    void Update() {
       static ulong last_update = 0;
-      if(GetTickCount64() - last_update < 300) return; 
+      if(GetTickCount64() - last_update < 300) return;
       last_update = GetTickCount64();
 
-      const uint col_bg = ARGB(255, 0, 0, 0);
-      const uint col_header = ARGB(255, 23, 28, 126);
-      const uint col_border = ARGB(255, 70, 90, 255);
-      const uint col_text = ARGB(255, 255, 255, 255);
-      const uint col_text_dim = ARGB(255, 220, 220, 220);
-      const uint col_text_off = ARGB(255, 165, 165, 165);
-      int fs_body = MathMax(11, InpFontSize + 4);
-      int fs_head = fs_body + 1;
-      int fs_title = fs_body + 2;
+      const uint col_bg     = ARGB(255, 10, 17, 32);
+      const uint col_panel  = ARGB(255, 14, 23, 41);
+      const uint col_line   = ARGB(255, 28, 43, 71);
+      const uint col_accent = ARGB(255, 22, 211, 154);
+      const uint col_text   = ARGB(255, 233, 239, 249);
+      const uint col_soft   = ARGB(255, 149, 166, 195);
+      const uint col_faint  = ARGB(255, 94, 112, 147);
+      const uint col_up     = ARGB(255, 22, 199, 132);
+      const uint col_down   = ARGB(255, 234, 57, 67);
+      const uint col_amber  = ARGB(255, 245, 166, 35);
+      const uint col_blue   = ARGB(255, 76, 141, 255);
 
-      int startX = 8;
-      m_canvas.Erase(col_bg);
-      m_canvas.FillRectangle(0, 0, m_w, m_h, col_bg);
-      m_canvas.Rectangle(0, 0, m_w-1, m_h-1, col_border);
-      m_canvas.Rectangle(1, 1, m_w-2, m_h-2, col_border);
+      int fs_body  = (int)MathMax(11, (InpFontSize + 8) * g_panel_scale);
+      int fs_label = fs_body - 2;
+      int fs_title = fs_body + 3;
 
-      // 1. HEADER
-      m_canvas.FillRectangle(4, 4, m_w-4, 34, col_header);
-      m_canvas.FontSet(InpFont, fs_title, FW_BOLD);
       string symbol_upper = _Symbol;
       StringToUpper(symbol_upper);
-      m_canvas.TextOut(8, 10, StringFormat("Quantum Queen MT5 v3.52 (%s) [%s]", "17/03/2026", symbol_upper), col_text);
-      m_canvas.TextOut(m_w - 40, 10, "-  x", col_text);
-      
-      // 2. TOP BUTTONS (kept aligned with click zones in OnChartEvent)
+      string cur = AccountInfoString(ACCOUNT_CURRENCY);
+
+      m_canvas.Erase(col_bg);
+      m_canvas.FillRectangle(0, 0, m_w, m_h, col_bg);
+      m_canvas.Rectangle(0, 0, m_w-1, m_h-1, col_line);
+      m_canvas.Rectangle(1, 1, m_w-2, m_h-2, col_line);
+      m_canvas.FillRectangle(0, 0, m_w, 4, col_accent);
+
+      // ===== 1. HEADER =====
+      m_canvas.FontSet(InpFont, fs_title, FW_BOLD);
+      m_canvas.TextOut(S(14), S(14), "HANDLIV - LIVWELL KING", col_accent);
+      RightText(m_w - S(14), S(18), symbol_upper, col_soft);
+      m_canvas.FillRectangle(S(14), S(42), m_w - S(14), S(42) + 2, col_line);
+
+      // ===== 2. BOTOES (zonas de clique alinhadas com OnChartEvent) =====
       int btnW = (m_w - 15) / 2;
-      int btnH = 32;
-      DrawButton(5, 40, btnW, btnH, m_paused ? "RESUME EA" : "PAUSE EA", col_header);
-      DrawButton(m_w - btnW - 5, 40, btnW, btnH, "CLOSE ALL TRADES", col_header);
-      
-      // 3. INFORMATION BAR
-      m_canvas.FillRectangle(5, 75, m_w-5, 95, col_header);
-      m_canvas.FontSet(InpFont, fs_head, FW_BOLD);
-      m_canvas.TextOut(startX + (m_w/2) - 60, 78, "INFORMATION", col_text);
-      
-      // 4. DATA FIELDS
-      int startY = 105;
-      int lineH = 18;
-      int strategyX = 265;
-      int strategyLineH = 36;
-      m_canvas.FontSet(InpFont, fs_body);
-      
-      string lotMode = (InpLotsCalc == LOT_FIXED) ? "Fixed" : (InpLotsCalc == LOT_BALANCE ? "Fixed per Balance" : "Automatic");
-      string fixedTxt = (InpLotsCalc == LOT_FIXED) ? StringFormat("%.2f", InpLotsFixed) : "---";
-      string fixedBalTxt = (InpLotsCalc == LOT_BALANCE) ? StringFormat("%.1f", InpLotsFixedBalance) : "---";
+      int btnH = S(36);
+      DrawButton(5, S(44), btnW, btnH, m_paused ? "RESUME EA" : "PAUSE EA",
+                 m_paused ? col_amber : col_panel,
+                 m_paused ? ARGB(255, 30, 20, 5) : col_accent);
+      DrawButton(m_w - btnW - 5, S(44), btnW, btnH, "CLOSE ALL TRADES", col_panel, col_down);
 
-      string riskLevel = "Medium";
-      switch(InpAutoLotsValue) {
-         case RISK_VERY_LOW: riskLevel = "Very Low"; break;
-         case RISK_LOW: riskLevel = "Low"; break;
-         case RISK_MEDIUM: riskLevel = "Medium"; break;
-         case RISK_LOW_MEDIUM: riskLevel = "Low-Medium"; break;
-         case RISK_MEDIUM_HIGH: riskLevel = "Medium-High"; break;
-         case RISK_HIGH: riskLevel = "High"; break;
-         case RISK_VERY_HIGH: riskLevel = "Very High"; break;
-      }
+      // ===== 3. STATUS =====
+      m_canvas.FontSet(InpFont, fs_body + 2, FW_BOLD);
+      m_canvas.TextOut(S(14), S(92), m_paused ? "* PAUSADO" : "* ROBO OPERANDO", m_paused ? col_amber : col_accent);
+      m_canvas.FontSet(InpFont, fs_body, FW_NORMAL);
+      RightText(m_w - S(14), S(96), "v3.52 MULTI", col_faint);
 
-      string ddModeTxt = "OFF";
-      switch(InpDDMode) {
-         case DD_PCT_CLOSE_CONTINUE: ddModeTxt = "[Pct.] Close all EA trades & CONTINUE"; break;
-         case DD_PCT_CLOSE_REMOVE:   ddModeTxt = "[Pct.] Close all EA trades & REMOVE"; break;
-         case DD_PCT_ALERT:          ddModeTxt = "[Pct.] Alert on Terminal"; break;
-         case DD_MONEY_CLOSE_CONTINUE: ddModeTxt = "[Money] Close all EA trades & CONTINUE"; break;
-         case DD_MONEY_CLOSE_REMOVE:   ddModeTxt = "[Money] Close all EA trades & REMOVE"; break;
-         case DD_MONEY_ALERT:          ddModeTxt = "[Money] Alert on Terminal"; break;
-      }
-
-      string setTxt = "IC Markets - RAW - HIGH RISK";
-      switch(InpSets) {
-         case SET_ROBO_ECN: setTxt = "RoboForex - ECN"; break;
-         case SET_FUSION: setTxt = "Fusion Markets - Zero"; break;
-         case SET_IC_LOW:   setTxt = "IC Markets - RAW - LOW RISK"; break;
-         case SET_IC_HIGH:  setTxt = "IC Markets - RAW - HIGH RISK"; break;
-         default: setTxt = "IC Markets - RAW - HIGH RISK"; break;
-      }
-
-      double total_volume = GetTotalVolume();
+      // ===== 4. CONTA =====
       double total_pl = AccountInfoDouble(ACCOUNT_PROFIT);
-      double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-      double equity = AccountInfoDouble(ACCOUNT_EQUITY);
-      double margin_level = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
-      double margin_call = AccountInfoDouble(ACCOUNT_MARGIN_SO_CALL);
-      double margin_stop = AccountInfoDouble(ACCOUNT_MARGIN_SO_SO);
-      if(margin_call <= 0) margin_call = 100;
-      if(margin_stop < 0) margin_stop = 0;
+      double balance  = AccountInfoDouble(ACCOUNT_BALANCE);
+      double equity   = AccountInfoDouble(ACCOUNT_EQUITY);
+      double day_pl   = GetDailyProfit();
 
-      MqlDateTime dt;
-      TimeToStruct(TimeCurrent(), dt);
-      string broker_time = StringFormat("%02d:%02d:%02d", dt.hour, dt.min, dt.sec);
+      int y0 = S(124);
+      int lineH = S(28);
+      m_canvas.FontSet(InpFont, fs_label, FW_BOLD);
+      m_canvas.TextOut(S(14), y0, "CONTA", col_faint);
+      m_canvas.FontSet(InpFont, fs_body, FW_NORMAL);
+      RowText(S(14), y0 + lineH,     m_w - S(14), "PATRIMONIO",  DoubleToString(equity, 2) + " " + cur, col_text);
+      RowText(S(14), y0 + lineH * 2, m_w - S(14), "SALDO",       DoubleToString(balance, 2) + " " + cur, col_text);
+      RowText(S(14), y0 + lineH * 3, m_w - S(14), "FLUTUANTE",   SignMoney(total_pl) + " " + cur, total_pl >= 0 ? col_up : col_down);
+      RowText(S(14), y0 + lineH * 4, m_w - S(14), "P/L HOJE",    SignMoney(day_pl) + " " + cur, day_pl >= 0 ? col_up : col_down);
 
-      m_canvas.TextOut(startX, startY + lineH*0, "Lot Calculation Method: " + lotMode, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*1, "Auto Lots Risk Level: " + riskLevel, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*2, "Fixed: " + fixedTxt, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*3, "Fixed per Balance: " + fixedBalTxt, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*4, "DD. Control Mode: " + ddModeTxt, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*5, StringFormat("DD. Value: %.1f %%", InpDDValue), col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*6, StringFormat("Magic Number: %d", InpMagicNumber), col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*7, "Comment: " + InpComment, col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*8, "MQID® Push Notif. [DD/TP/SL]: " + (IsOn(InpMQID) ? "ON" : "OFF"), col_text_dim);
-      
-      m_canvas.TextOut(startX, startY + lineH*10, "Set: " + setTxt, col_text);
-      m_canvas.TextOut(startX, startY + lineH*12, StringFormat("Total P/L: %.2f USD", total_pl), col_text);
-      m_canvas.TextOut(startX, startY + lineH*13, StringFormat("Balance: %.2f USD", balance), col_text);
-      m_canvas.TextOut(startX, startY + lineH*14, StringFormat("Equity: %.2f USD", equity), col_text);
-      m_canvas.TextOut(startX, startY + lineH*15, StringFormat("Margin Curr.: %.0f%%", margin_level), col_text);
-      m_canvas.TextOut(startX, startY + lineH*16, StringFormat("Margin Call: %.0f %%", margin_call), col_text);
-      m_canvas.TextOut(startX, startY + lineH*17, StringFormat("Margin StopOut: %.0f %%", margin_stop), col_text_dim);
-      m_canvas.TextOut(startX, startY + lineH*18, StringFormat("Total Volume: %.2f Lots", total_volume), col_text);
-      m_canvas.TextOut(startX, startY + lineH*20, "Name: Tester", col_text);
-      m_canvas.TextOut(startX, startY + lineH*21, StringFormat("Broker: %s | %s", AccountInfoString(ACCOUNT_COMPANY), broker_time), col_text);
-      m_canvas.TextOut(startX, startY + lineH*22, StringFormat("Account & Server: %d / %s", (int)AccountInfoInteger(ACCOUNT_LOGIN), AccountInfoString(ACCOUNT_SERVER)), col_text);
-      m_canvas.TextOut(startX, startY + lineH*23, StringFormat("Leverage & Currency: %d:1 / %s", (int)AccountInfoInteger(ACCOUNT_LEVERAGE), AccountInfoString(ACCOUNT_CURRENCY)), col_text);
+      int ea_positions = 0;
+      double ea_volume = 0.0;
+      for(int p = 0; p < PositionsTotal(); p++) {
+         if(PositionSelectByTicket(PositionGetTicket(p))) {
+            if(PositionGetInteger(POSITION_MAGIC) == InpMagicNumber && PositionGetString(POSITION_SYMBOL) == _Symbol) {
+               ea_positions++;
+               ea_volume += PositionGetDouble(POSITION_VOLUME);
+            }
+         }
+      }
+      RowText(S(14), y0 + lineH * 5, m_w - S(14), "POSICOES DO EA",
+              StringFormat("%d  (%.2f lots)", ea_positions, ea_volume), ea_positions > 0 ? col_blue : col_faint);
+
+      // ===== 5. ESTRATEGIAS (2 colunas) =====
+      int ys = y0 + lineH * 6 + S(14);
+      m_canvas.FontSet(InpFont, fs_label, FW_BOLD);
+      m_canvas.TextOut(S(14), ys, "ESTRATEGIAS", col_faint);
+      m_canvas.FillRectangle(S(14), ys + S(20), m_w - S(14), ys + S(22), col_line);
 
       string active_type = "BUY";
       int active_counts[13] = {0};
-      for(int p=0; p<PositionsTotal(); p++) {
+      for(int p = 0; p < PositionsTotal(); p++) {
          if(PositionSelectByTicket(PositionGetTicket(p))) {
             if(PositionGetInteger(POSITION_MAGIC) == InpMagicNumber && PositionGetString(POSITION_SYMBOL) == _Symbol) {
                string comment = PositionGetString(POSITION_COMMENT);
                active_type = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY) ? "BUY" : "SELL";
-               // Parse strategy ID from comment "QQ[...]|...|[TX/SXX]"
                int s_pos = StringFind(comment, "/S");
                if(s_pos > 0) {
                   int s_id = (int)StringToInteger(StringSubstr(comment, s_pos + 2, 2));
@@ -730,31 +700,85 @@ public:
          }
       }
 
-      for(int i=0; i<12; i++) {
-         bool on = IsStrategyEnabled(i);
+      m_canvas.FontSet(InpFont, fs_body, FW_NORMAL);
+      int stratH = S(32);
+      for(int i = 0; i < 12; i++) {
+         int col_i = i / 6;
+         int row_i = i % 6;
+         int sx = S(16) + col_i * S(235);
+         int sy = ys + S(34) + row_i * stratH;
          int s_num = i + 1;
-         string status = StringFormat("%s | Awaiting signals ...", on ? "ON" : "OFF");
-         uint col = on ? col_text : col_text_off;
-         
+         bool on = IsStrategyEnabled(i);
+         uint col = on ? col_soft : col_faint;
+         string line = StringFormat("[S%02d] %s", s_num, on ? "ON" : "OFF");
          if(active_counts[s_num] > 0) {
-            status = StringFormat("ON | Cycle of %d %s trades ...", active_counts[s_num], active_type);
-            col = ARGB(255, 255, 236, 166);
+            line = StringFormat("[S%02d] CICLO %d %s", s_num, active_counts[s_num], active_type);
+            col = col_amber;
          }
-         
-         m_canvas.TextOut(strategyX, startY + (i*strategyLineH), StringFormat("[Strategy %d] %s", s_num, status), col);
+         m_canvas.TextOut(sx, sy, line, col);
       }
+
+      // ===== 6. CONFIG =====
+      string setTxt = "IC Markets - RAW - LOW RISK";
+      switch(InpSets) {
+         case SET_ROBO_ECN: setTxt = "RoboForex - ECN"; break;
+         case SET_FUSION:   setTxt = "Fusion Markets - Zero"; break;
+         case SET_IC_LOW:   setTxt = "IC Markets - RAW - LOW RISK"; break;
+         case SET_IC_HIGH:  setTxt = "IC Markets - RAW - HIGH RISK"; break;
+         default:           setTxt = "IC Markets - RAW - LOW RISK"; break;
+      }
+      string lotMode = (InpLotsCalc == LOT_FIXED) ? "Fixed" : (InpLotsCalc == LOT_BALANCE ? "Fix/Balance" : "Auto");
+      string ddTxt = (InpDDMode == DD_OFF) ? "DD OFF" : StringFormat("DD %.1f", InpDDValue);
+
+      int yc = ys + S(34) + 6 * stratH + S(14);
+      m_canvas.FillRectangle(S(14), yc, m_w - S(14), yc + 2, col_line);
+      m_canvas.FontSet(InpFont, fs_label, FW_BOLD);
+      m_canvas.TextOut(S(14), yc + S(10), "CONFIG", col_faint);
+      m_canvas.FontSet(InpFont, fs_body, FW_NORMAL);
+      m_canvas.TextOut(S(14), yc + S(36), StringFormat("Lote: %s   Magic: %d   %s", lotMode, InpMagicNumber, ddTxt), col_soft);
+      m_canvas.TextOut(S(14), yc + S(62), "Set: " + setTxt, col_soft);
+
+      // ===== 7. RODAPE =====
+      int yf = m_h - S(74);
+      m_canvas.FillRectangle(S(14), yf, m_w - S(14), yf + 2, col_line);
+      m_canvas.FontSet(InpFont, fs_label, FW_NORMAL);
+      m_canvas.TextOut(S(14), yf + S(10),  AccountInfoString(ACCOUNT_COMPANY), col_faint);
+      m_canvas.TextOut(S(14), yf + S(32), StringFormat("Conta %d | %s", (int)AccountInfoInteger(ACCOUNT_LOGIN), AccountInfoString(ACCOUNT_SERVER)), col_faint);
+      m_canvas.FontSet(InpFont, fs_body, FW_NORMAL);
+      m_canvas.TextOut(S(14), yf + S(56), StringFormat("Alavancagem 1:%d | %s", (int)AccountInfoInteger(ACCOUNT_LEVERAGE), cur), col_faint);
+      m_canvas.FontSet(InpFont, fs_body, FW_BOLD);
+      RightText(m_w - S(14), m_h - S(26), "handliv.com", col_accent);
 
       m_canvas.Update();
    }
-   
+
 private:
-   void DrawButton(int x, int y, int w, int h, string text, uint bg) {
-      m_canvas.FillRectangle(x, y, x+w, y+h, bg);
-      m_canvas.Rectangle(x, y, x+w, y+h, ARGB(255, 85, 105, 255));
-      m_canvas.FontSet(InpFont, MathMax(11, InpFontSize + 5), FW_NORMAL);
-      m_canvas.TextOut(x + (w/2) - (StringLen(text)*3), y + h/2 - 7, text, ARGB(255, 255, 255, 255));
+   int S(int v) {
+      return (int)(v * g_panel_scale);
    }
-   
+
+   string SignMoney(double v) {
+      return (v >= 0 ? "+" : "-") + DoubleToString(MathAbs(v), 2);
+   }
+
+   void RightText(int x_right, int y, string text, uint col) {
+      m_canvas.TextOut(x_right - m_canvas.TextWidth(text), y, text, col);
+   }
+
+   void RowText(int x_left, int y, int x_right, string label, string value, uint col) {
+      m_canvas.TextOut(x_left, y, label, ARGB(255, 94, 112, 147));
+      m_canvas.TextOut(x_right - m_canvas.TextWidth(value), y, value, col);
+   }
+
+   void DrawButton(int x, int y, int w, int h, string text, uint bg, uint fg) {
+      m_canvas.FillRectangle(x, y, x + w, y + h, bg);
+      m_canvas.Rectangle(x, y, x + w, y + h, ARGB(255, 28, 43, 71));
+      int fs = (int)MathMax(11, (InpFontSize + 8) * g_panel_scale);
+      m_canvas.FontSet(InpFont, fs, FW_BOLD);
+      int tw = m_canvas.TextWidth(text);
+      m_canvas.TextOut(x + (w - tw) / 2, y + (h - fs - 4) / 2, text, fg);
+   }
+
    double GetDailyProfit() {
       datetime start = iTime(_Symbol, PERIOD_D1, 0);
       if(start == 0) return 0.0;
@@ -1193,7 +1217,7 @@ private:
       return sig;
    }
    
-   string GenerateComment(string tag, int strategy_id) { return StringFormat("QQ[%s]|%d|[%s/S%02d]", _Symbol, m_magic, tag, strategy_id); }
+   string GenerateComment(string tag, int strategy_id) { return StringFormat("HLV[%s]|%d|[%s/S%02d]", _Symbol, m_magic, tag, strategy_id); }
 
    double NormalizeVolume(double requested_lot) {
       double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -1283,8 +1307,9 @@ input ENUM_PRESET_SETS   InpSets              = SET_IC_LOW;        // Sets
 
 input group ">>>> PANEL & VISUAL SETTINGS"
 input ENUM_ON_OFF        InpPanel             = SWITCH_ON;         // Show Panel
-input string             InpFont              = "Trebuchet MS";    // Panel Font
-input int                InpFontSize          = 6;                 // Panel Font Size
+input ENUM_ON_OFF        InpPanelCompact      = SWITCH_OFF;        // Painel compacto (telas pequenas)
+input string             InpFont              = "Arial";            // Panel Font
+input int                InpFontSize          = 8;                 // Panel Font Size
 input string             InpComment           = "EA LivWell King MT5"; // Panel Comment
 input ENUM_LINE_STYLE    InpLineStyle         = STYLE_SOLID;       // Line Style
 input int                InpLineWidth         = 2;                 // Line Width
@@ -1304,6 +1329,8 @@ double InpDeMarkerSell = 0.7;   // Zona de venda (overbought)
 CTrade            g_trade;
 CStrategyManager  g_strategy_manager;
 CQuantumDashboard g_dashboard;
+int               g_panel_w = 480;
+double            g_panel_scale = 1.0;
 bool              g_ea_paused = false;
 
 int               m_dem_handle;
@@ -1320,7 +1347,7 @@ int OnInit() {
    }
    Comment(""); 
    
-   vencimento2();
+   //vencimento2();
    
    g_ea_paused = IsOn(InpPause);
    g_trade.SetExpertMagicNumber(InpMagicNumber);
@@ -1350,11 +1377,12 @@ void OnTick() {
 }
 
 void OnChartEvent(const int id, const long& lparam, const double& dparam, const string& sparam) {
-   if(id == CHARTEVENT_OBJECT_CLICK && sparam == "QQ_Dashboard") {
-      int x = (int)lparam - 40; int y = (int)dparam - 20; int panelW = 600; int btnW = (panelW - 15) / 2;
-      if(x >= 5 && x <= (5 + btnW) && y >= 40 && y <= 72) { g_ea_paused = !g_ea_paused; g_dashboard.OnPaused(g_ea_paused); }
+   if(id == CHARTEVENT_OBJECT_CLICK && sparam == "HLV_Dashboard") {
+      int x = (int)lparam - 40; int y = (int)dparam - 20; int panelW = g_panel_w; int btnW = (panelW - 15) / 2;
+      int btnY = (int)(44 * g_panel_scale); int btnH = (int)(36 * g_panel_scale);
+      if(x >= 5 && x <= (5 + btnW) && y >= btnY && y <= btnY + btnH) { g_ea_paused = !g_ea_paused; g_dashboard.OnPaused(g_ea_paused); }
       int btn2x = panelW - btnW - 5;
-      if(x >= btn2x && x <= (btn2x + btnW) && y >= 40 && y <= 72) g_strategy_manager.CloseAll();
+      if(x >= btn2x && x <= (btn2x + btnW) && y >= btnY && y <= btnY + btnH) g_strategy_manager.CloseAll();
    }
 }
 
