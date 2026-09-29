@@ -231,6 +231,27 @@ def get_score(symbol: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     }
 
 
+def _visible_news_items(live_items: list[dict[str, Any]], saved_articles: list[Any]) -> list[dict[str, Any]]:
+    """Show stored real articles when the live provider has no news.
+
+    This changes presentation only: sentiment calculation/weighting stays in live_analysis.
+    """
+    if live_items:
+        return live_items[:5]
+    return [
+        {
+            "title": article.title,
+            "summary": article.summary,
+            "url": article.url,
+            "source": article.source,
+            "published_at": article.published_at.isoformat(),
+            "sentiment_label": article.sentiment_label.value if article.sentiment_label else None,
+            "sentiment_score": float(article.sentiment_score) if article.sentiment_score is not None else None,
+        }
+        for article in saved_articles[:5]
+    ]
+
+
 @router.get("/assets/{symbol}/live-analysis")
 def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_current_user)) -> dict[str, Any]:
     """Compute a live analysis (score, indicators, fundamentals, recommendation) on the fly."""
@@ -413,7 +434,7 @@ def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_c
         "ai_explanation": explain_score(result, asset.symbol),
         "indicators_explanation": explain_indicators(result.technical.inputs),
         "news_summary": summarize_news(news_items),
-        "news_items": news_items_with_sentiment[:5],
+        "news_items": _visible_news_items(news_items_with_sentiment, articles),
         "technical_votes": result.technical.inputs.get("votes", {}),
         "price_history": bars[-30:] if bars else [],
     }
