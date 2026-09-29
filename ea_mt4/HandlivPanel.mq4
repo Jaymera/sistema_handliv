@@ -163,20 +163,29 @@ string AccountToken()
 }
 
 //+------------------------------------------------------------------+
-//| HTTP (mesma assinatura do MT5)                                   |
+//| HTTP                                                              |
+//| MQL4: WebRequest(method, url, cookie, referer, headers, timeout,  |
+//|                data, data_size, result, result_size,              |
+//|                result_headers)  -> 11 parametros                   |
 //+------------------------------------------------------------------+
+#define HTTP_TIMEOUT   5000
+#define HTTP_BUFFSIZE  65536
+
 bool HttpGet(const string url, string &response)
 {
-   string headers = "Content-Type: application/json\r\n";
-   string cookie  = "";
+   string headers  = "Content-Type: application/json\r\n";
+   string cookie   = "";
+   string referer  = InpApiUrl + "/";
    char   post[], result[];
-   string resultHeaders;
+   string resultHeaders = "";
    int    code;
 
    ResetLastError();
    StringToCharArray("", post, 0, 0, CP_UTF8);
-   // MT4: WebRequest(method, url, cookie, referer, headers, timeout, data, result, result_headers)
-   code = WebRequest("GET", url, cookie, InpApiUrl + "/", headers, 5000, post, result, resultHeaders);
+   ArrayResize(post, 0);                       // GET sem corpo
+   ArrayResize(result, HTTP_BUFFSIZE);
+   code = WebRequest("GET", url, cookie, referer, headers, HTTP_TIMEOUT,
+                     post, 0, result, HTTP_BUFFSIZE, resultHeaders);
    if(code == -1)
    {
       g_status = "WebRequest bloqueado (erro " + IntegerToString(GetLastError()) + "). Libere a URL nas opcoes do MT4.";
@@ -193,15 +202,18 @@ bool HttpGet(const string url, string &response)
 
 bool HttpPost(const string url, const string json, string &response)
 {
-   string headers = "Content-Type: application/json\r\n";
-   string cookie  = "";
+   string headers  = "Content-Type: application/json\r\n";
+   string cookie   = "";
+   string referer  = InpApiUrl + "/";
    char   post[], result[];
-   string resultHeaders;
-   int    code;
+   string resultHeaders = "";
+   int    code, size;
 
-   StringToCharArray(json, post, 0, StringLen(json), CP_UTF8);
-   // MT4: WebRequest(method, url, cookie, referer, headers, timeout, data, result, result_headers)
-   code = WebRequest("POST", url, cookie, InpApiUrl + "/", headers, 5000, post, result, resultHeaders);
+   ResetLastError();
+   size = StringToCharArray(json, post, 0, StringLen(json), CP_UTF8);
+   ArrayResize(result, HTTP_BUFFSIZE);
+   code = WebRequest("POST", url, cookie, referer, headers, HTTP_TIMEOUT,
+                     post, size, result, HTTP_BUFFSIZE, resultHeaders);
    if(code == -1 || code >= 400)
    {
       Print("HandlivPanel POST falhou HTTP ", code, " url=", url);
