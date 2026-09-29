@@ -70,24 +70,27 @@ uint Ror32(uint x, int n)
    return (x >> n) | (x << (32 - n));
 }
 
-void Sha256K(uint &k[])
+uint Sha256K[64];   // tabela K: global para evitar aviso de variavel nao inicializada
+uint Sha256W[64];   // vetor de trabalho: global pelo mesmo motivo
+
+void Sha256LoadK()
 {
-   k[ 0]=0x428a2f98; k[ 1]=0x71374491; k[ 2]=0xb5c0fbcf; k[ 3]=0xe9b5dba5;
-   k[ 4]=0x3956c25b; k[ 5]=0x59f111f1; k[ 6]=0x923f82a4; k[ 7]=0xab1c5ed5;
-   k[ 8]=0xd807aa98; k[ 9]=0x12835b01; k[10]=0x243185be; k[11]=0x550c7dc3;
-   k[12]=0x72be5d74; k[13]=0x80deb1fe; k[14]=0x9bdc06a7; k[15]=0xc19bf174;
-   k[16]=0xe49b69c1; k[17]=0xefbe4786; k[18]=0x0fc19dc6; k[19]=0x240ca1cc;
-   k[20]=0x2de92c6f; k[21]=0x4a7484aa; k[22]=0x5cb0a9dc; k[23]=0x76f988da;
-   k[24]=0x983e5152; k[25]=0xa831c66d; k[26]=0xb00327c8; k[27]=0xbf597fc7;
-   k[28]=0xc6e00bf3; k[29]=0xd5a79147; k[30]=0x06ca6351; k[31]=0x14292967;
-   k[32]=0x27b70a85; k[33]=0x2e1b2138; k[34]=0x4d2c6dfc; k[35]=0x53380d13;
-   k[36]=0x650a7354; k[37]=0x766a0abb; k[38]=0x81c2c92e; k[39]=0x92722c85;
-   k[40]=0xa2bfe8a1; k[41]=0xa81a664b; k[42]=0xc24b8b70; k[43]=0xc76c51a3;
-   k[44]=0xd192e819; k[45]=0xd6990624; k[46]=0xf40e3585; k[47]=0x106aa070;
-   k[48]=0x19a4c116; k[49]=0x1e376c08; k[50]=0x2748774c; k[51]=0x34b0bcb5;
-   k[52]=0x391c0cb3; k[53]=0x4ed8aa4a; k[54]=0x5b9cca4f; k[55]=0x682e6ff3;
-   k[56]=0x748f82ee; k[57]=0x78a5636f; k[58]=0x84c87814; k[59]=0x8cc70208;
-   k[60]=0x90befffa; k[61]=0xa4506ceb; k[62]=0xbef9a3f7; k[63]=0xc67178f2;
+   Sha256K[ 0]=0x428a2f98; Sha256K[ 1]=0x71374491; Sha256K[ 2]=0xb5c0fbcf; Sha256K[ 3]=0xe9b5dba5;
+   Sha256K[ 4]=0x3956c25b; Sha256K[ 5]=0x59f111f1; Sha256K[ 6]=0x923f82a4; Sha256K[ 7]=0xab1c5ed5;
+   Sha256K[ 8]=0xd807aa98; Sha256K[ 9]=0x12835b01; Sha256K[10]=0x243185be; Sha256K[11]=0x550c7dc3;
+   Sha256K[12]=0x72be5d74; Sha256K[13]=0x80deb1fe; Sha256K[14]=0x9bdc06a7; Sha256K[15]=0xc19bf174;
+   Sha256K[16]=0xe49b69c1; Sha256K[17]=0xefbe4786; Sha256K[18]=0x0fc19dc6; Sha256K[19]=0x240ca1cc;
+   Sha256K[20]=0x2de92c6f; Sha256K[21]=0x4a7484aa; Sha256K[22]=0x5cb0a9dc; Sha256K[23]=0x76f988da;
+   Sha256K[24]=0x983e5152; Sha256K[25]=0xa831c66d; Sha256K[26]=0xb00327c8; Sha256K[27]=0xbf597fc7;
+   Sha256K[28]=0xc6e00bf3; Sha256K[29]=0xd5a79147; Sha256K[30]=0x06ca6351; Sha256K[31]=0x14292967;
+   Sha256K[32]=0x27b70a85; Sha256K[33]=0x2e1b2138; Sha256K[34]=0x4d2c6dfc; Sha256K[35]=0x53380d13;
+   Sha256K[36]=0x650a7354; Sha256K[37]=0x766a0abb; Sha256K[38]=0x81c2c92e; Sha256K[39]=0x92722c85;
+   Sha256K[40]=0xa2bfe8a1; Sha256K[41]=0xa81a664b; Sha256K[42]=0xc24b8b70; Sha256K[43]=0xc76c51a3;
+   Sha256K[44]=0xd192e819; Sha256K[45]=0xd6990624; Sha256K[46]=0xf40e3585; Sha256K[47]=0x106aa070;
+   Sha256K[48]=0x19a4c116; Sha256K[49]=0x1e376c08; Sha256K[50]=0x2748774c; Sha256K[51]=0x34b0bcb5;
+   Sha256K[52]=0x391c0cb3; Sha256K[53]=0x4ed8aa4a; Sha256K[54]=0x5b9cca4f; Sha256K[55]=0x682e6ff3;
+   Sha256K[56]=0x748f82ee; Sha256K[57]=0x78a5636f; Sha256K[58]=0x84c87814; Sha256K[59]=0x8cc70208;
+   Sha256K[60]=0x90befffa; Sha256K[61]=0xa4506ceb; Sha256K[62]=0xbef9a3f7; Sha256K[63]=0xc67178f2;
 }
 
 void Sha256Init(uint &h[])
@@ -99,28 +102,26 @@ void Sha256Init(uint &h[])
 //--- SHA-256 (FIPS 180-4). Estado de 32 bits: 8 words.
 void Sha256Block(uint &h[], const uchar &block[], int offset)
 {
-   uint k[64], w[64];
    uint a, b, c, d, e, f, g, hh, v, s0, s1, t1, t2;
    int i, j;
-   Sha256K(k);
-   for(i = 0; i < 64; i++) w[i] = 0;   // evita "possible use of uninitialized variable"
+   for(i = 0; i < 64; i++) Sha256W[i] = 0;
    for(i = 0; i < 16; i++)
    {
       v = 0;
       for(j = 0; j < 4; j++) v = (v << 8) | (uint)block[offset + i * 4 + j];
-      w[i] = v;
+      Sha256W[i] = v;
    }
    for(i = 16; i < 64; i++)
    {
-      s0 = Ror32(w[i-15], 7) ^ Ror32(w[i-15], 18) ^ (w[i-15] >> 3);
-      s1 = Ror32(w[i-2], 17) ^ Ror32(w[i-2], 19)  ^ (w[i-2]  >> 10);
-      w[i] = w[i-16] + s0 + w[i-7] + s1;
+      s0 = Ror32(Sha256W[i-15], 7) ^ Ror32(Sha256W[i-15], 18) ^ (Sha256W[i-15] >> 3);
+      s1 = Ror32(Sha256W[i-2], 17) ^ Ror32(Sha256W[i-2], 19)  ^ (Sha256W[i-2]  >> 10);
+      Sha256W[i] = Sha256W[i-16] + s0 + Sha256W[i-7] + s1;
    }
    a=h[0]; b=h[1]; c=h[2]; d=h[3]; e=h[4]; f=h[5]; g=h[6]; hh=h[7];
    for(i = 0; i < 64; i++)
    {
       s1 = Ror32(e, 6) ^ Ror32(e, 11) ^ Ror32(e, 25);
-      t1 = hh + s1 + ((e & f) ^ ((~e) & g)) + k[i] + w[i];
+      t1 = hh + s1 + ((e & f) ^ ((~e) & g)) + Sha256K[i] + Sha256W[i];
       s0 = Ror32(a, 2) ^ Ror32(a, 13) ^ Ror32(a, 22);
       t2 = s0 + ((a & b) ^ (a & c) ^ (b & c));
       hh = g; g = f; f = e; e = d + t1;
@@ -140,6 +141,7 @@ string Sha256Hex(const string text)
    int    len, full, rest, total, off, i;
 
    Sha256Init(h);
+   Sha256LoadK();
    for(i = 0; i < 128; i++) last[i] = 0;   // padding sem lixo da pilha
    len  = StringToCharArray(text, src, 0, StringLen(text));
    full = len - (len % 64);
@@ -174,6 +176,25 @@ string AccountToken()
 //+------------------------------------------------------------------+
 #define HTTP_TIMEOUT 5000
 
+//+------------------------------------------------------------------+
+//| Traduz o erro do WebRequest em acao util.                       |
+//| 4014 = URL nao esta na lista de Allow WebRequest                 |
+//| 4060 = nenhuma resposta / conexao recusada                       |
+//| 4051 = funcao desabilitada nas opcoes do terminal                 |
+//+------------------------------------------------------------------+
+string HttpErrorHelp(const int code)
+{
+   switch(code)
+   {
+      case 4014: return " | ERRO 4014: libere " + InpApiUrl + " em Ferramentas > Opcoes > Expert Advisors > Allow WebRequest";
+      case 4060: return " | ERRO 4060: sem resposta da API. Verifique a URL, firewall/proxy e se a API esta online";
+      case 4051: return " | ERRO 4051: WebRequest desabilitado nas opcoes do terminal";
+      case 4063: return " | ERRO 4063: WebRequest nao permitido para este EA (marcar 'Permitir WebRequest para EAs de terceiros')";
+      case 4071: return " | ERRO 4071: nao foi possivel abrir a conexao com a API";
+      default:   return " | erro WebRequest " + IntegerToString(code);
+   }
+}
+
 bool HttpGet(const string url, string &response)
 {
    string headers  = "Content-Type: application/json\r\n";
@@ -188,12 +209,16 @@ bool HttpGet(const string url, string &response)
                      post, 0, result, resultHeaders);
    if(code == -1)
    {
-      g_status = "WebRequest bloqueado (erro " + IntegerToString(GetLastError()) + "). Libere a URL nas opcoes do MT4.";
+      int err = GetLastError();
+      g_status = "WebRequest falhou" + HttpErrorHelp(err);
+      Print("HandlivPanel GET falhou: ", g_status);
       return false;
    }
    if(code != 200)
    {
-      g_status = "HTTP " + IntegerToString(code);
+      g_status = "HTTP " + IntegerToString(code) +
+                 (code == 401 ? " | token invalido: confira conta e API token" :
+                  code == 404 ? " | conta nao cadastrada no site" : "");
       return false;
    }
    response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
@@ -214,7 +239,8 @@ bool HttpPost(const string url, const string json, string &response)
                      post, size, result, resultHeaders);
    if(code == -1 || code >= 400)
    {
-      Print("HandlivPanel POST falhou HTTP ", code, " url=", url);
+      int err = (code == -1) ? GetLastError() : 0;
+      Print("HandlivPanel POST falhou HTTP ", code, " erro ", err, " url=", url);
       return false;
    }
    response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
@@ -632,9 +658,17 @@ void CreatePanel()
 
 void UpdatePanel()
 {
+   // Recria o objeto se nao existir (o status inicial "Conectando..." e
+   // escrito em CreatePanel e nunca e redesenhado sem ChartRedraw).
+   if(ObjectFind("HLV_STATUS") < 0)
+   {
+      CreatePanel();
+      return;
+   }
    PanelText("HLV_STATUS", 20, 68,
              (g_apiOk ? "API OK" : "API OFF") + " | " + g_status,
              g_apiOk ? C'149,166,195' : C'234,57,67', 8);
+   ChartRedraw();
 }
 
 void DeletePanel()
@@ -665,6 +699,14 @@ int OnInit()
    CreatePanel();
    EventSetTimer(MathMax(1, InpPollSeconds));
    Print("HandlivPanel MT4 iniciado. Conta=", AccountNumber(), " API=", InpApiUrl);
+
+   // Primeira conexao imediata: sem isso o painel fica em "Conectando..."
+   // ate o primeiro tique do timer (e o timer so roda se Allow WebRequest
+   // estiver liberado, entao damos o erro logo).
+   PollCommands();
+   SendStats();
+   UpdatePanel();
+   ChartRedraw();
    return INIT_SUCCEEDED;
 }
 
@@ -678,6 +720,7 @@ void OnTick()
 {
    // Mantem o painel vivo mesmo sem timer rodando
    UpdatePanel();
+   ChartRedraw();
 }
 
 void OnTimer()
@@ -693,6 +736,8 @@ void OnTimer()
       g_lastStats = now;
       SendStats();
    }
+   UpdatePanel();
+   ChartRedraw();
 }
 
 void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
