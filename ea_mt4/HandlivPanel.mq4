@@ -103,6 +103,7 @@ void Sha256Block(uint &h[], const uchar &block[], int offset)
    uint a, b, c, d, e, f, g, hh, v, s0, s1, t1, t2;
    int i, j;
    Sha256K(k);
+   for(i = 0; i < 64; i++) w[i] = 0;   // evita "possible use of uninitialized variable"
    for(i = 0; i < 16; i++)
    {
       v = 0;
@@ -139,6 +140,7 @@ string Sha256Hex(const string text)
    int    len, full, rest, total, off, i;
 
    Sha256Init(h);
+   for(i = 0; i < 128; i++) last[i] = 0;   // padding sem lixo da pilha
    len  = StringToCharArray(text, src, 0, StringLen(text));
    full = len - (len % 64);
    for(off = 0; off < full; off += 64) Sha256Block(h, src, off);
@@ -164,28 +166,26 @@ string AccountToken()
 
 //+------------------------------------------------------------------+
 //| HTTP                                                              |
-//| MQL4: WebRequest(method, url, cookie, referer, headers, timeout,  |
-//|                data, data_size, result, result_size,              |
-//|                result_headers)  -> 11 parametros                   |
+//| Assinatura real do MQL4 (confirmada pelo compilador):              |
+//|   int WebRequest(method, url, referer, headers, timeout,           |
+//|                 data, data_size, result, result_headers)          |
+//| Nao existe 'cookie' nem 'result_size'; 'result' e char& e a        |
+//| funcao redimensiona o buffer internamente.                         |
 //+------------------------------------------------------------------+
-#define HTTP_TIMEOUT   5000
-#define HTTP_BUFFSIZE  65536
+#define HTTP_TIMEOUT 5000
 
 bool HttpGet(const string url, string &response)
 {
    string headers  = "Content-Type: application/json\r\n";
-   string cookie   = "";
    string referer  = InpApiUrl + "/";
-   char   post[], result[];
    string resultHeaders = "";
+   char   post[], result[];
    int    code;
 
    ResetLastError();
-   StringToCharArray("", post, 0, 0, CP_UTF8);
-   ArrayResize(post, 0);                       // GET sem corpo
-   ArrayResize(result, HTTP_BUFFSIZE);
-   code = WebRequest("GET", url, cookie, referer, headers, HTTP_TIMEOUT,
-                     post, 0, result, HTTP_BUFFSIZE, resultHeaders);
+   ArrayResize(post, 0);                // GET sem corpo
+   code = WebRequest("GET", url, referer, headers, HTTP_TIMEOUT,
+                     post, 0, result, resultHeaders);
    if(code == -1)
    {
       g_status = "WebRequest bloqueado (erro " + IntegerToString(GetLastError()) + "). Libere a URL nas opcoes do MT4.";
@@ -203,17 +203,15 @@ bool HttpGet(const string url, string &response)
 bool HttpPost(const string url, const string json, string &response)
 {
    string headers  = "Content-Type: application/json\r\n";
-   string cookie   = "";
    string referer  = InpApiUrl + "/";
-   char   post[], result[];
    string resultHeaders = "";
+   char   post[], result[];
    int    code, size;
 
    ResetLastError();
    size = StringToCharArray(json, post, 0, StringLen(json), CP_UTF8);
-   ArrayResize(result, HTTP_BUFFSIZE);
-   code = WebRequest("POST", url, cookie, referer, headers, HTTP_TIMEOUT,
-                     post, size, result, HTTP_BUFFSIZE, resultHeaders);
+   code = WebRequest("POST", url, referer, headers, HTTP_TIMEOUT,
+                     post, size, result, resultHeaders);
    if(code == -1 || code >= 400)
    {
       Print("HandlivPanel POST falhou HTTP ", code, " url=", url);
