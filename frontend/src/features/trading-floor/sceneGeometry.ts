@@ -28,17 +28,89 @@ export function money(value: number | null, currency: string): string {
   } catch { return `${currency} ${value.toFixed(2)}`; }
 }
 export const iso = (x: number, y: number): Point => ({ x: (x - y) * .78, y: (x + y) * .39 });
-/** Decorative motion is deterministic and never changes a telemetry status. */
-export function traderPose(status: string, now: number, id: string, reducedMotion: boolean) {
-  if (status !== 'AGUARDANDO' || reducedMotion) return { x: 0, y: 0, walking: false, stride: 0 };
-  let seed = 0;
-  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) | 0;
-  const cycle = ((now + (Math.abs(seed) % 7000)) % 12000) / 12000;
-  // Leave the chair, walk along the aisle, pause, then return to the station.
-  if (cycle < .16 || cycle > .86) return { x: 0, y: 0, walking: false, stride: 0 };
-  const progress = cycle < .40 ? (cycle - .16) / .24 : cycle < .63 ? 1 : 1 - (cycle - .63) / .23;
-  const distance = Math.max(0, Math.min(1, progress));
-  return { x: 88 * distance, y: 56 * distance, walking: true, stride: Math.sin(now / 155) * 5 };
+/** Movement is visual only: it never changes robot presence, order state or P/L. */
+export const avatarVisible = (status: string) => status !== 'OFFLINE';
+/** Stable visual identity; not a claim about the EA's real-world operator. */
+export function agentAppearance(id: string) {
+  const seed = hashId(id);
+  return {
+    jacket: ['#536D98', '#796491', '#548A83', '#A16D60', '#6383A0'][seed % 5],
+    skin: ['#D2A183', '#B77C62', '#E4BB91', '#8D5B49'][Math.floor(seed / 5) % 4],
+    hair: ['#252332', '#42362F', '#322B50', '#594232'][Math.floor(seed / 20) % 4],
+  };
+}
+type SocialArea = 'pool' | 'coffee' | 'meeting';
+type Pose = { x: number; y: number; walking: boolean; stride: number; facing: 'left' | 'right'; activity: 'desk' | 'walking' | SocialArea };
+const atDesk: Pose = { x: 0, y: 0, walking: false, stride: 0, facing: 'right', activity: 'desk' };
+function hashId(id: string): number {
+  let value = 2166136261;
+  for (let i = 0; i < id.length; i++) value = Math.imul(value ^ id.charCodeAt(i), 16777619);
+  return value >>> 0;
+}
+function along(points: Point[], fraction: number): { point: Point; facing: 'left' | 'right' } {
+  const lengths = points.slice(1).map((point, i) => Math.hypot(point.x - points[i].x, point.y - points[i].y));
+  let remaining = lengths.reduce((sum, length) => sum + length, 0) * fraction;
+  for (let i = 0; i < lengths.length; i++) {
+    if (remaining <= lengths[i] || i === lengths.length - 1) {
+      const p = points[i], q = points[i + 1], f = lengths[i] ? Math.min(1, remaining / lengths[i]) : 0;
+      return { point: { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f }, facing: q.x < p.x ? 'left' : 'right' };
+    }
+    remaining -= lengths[i];
+  }
+  return { point: points[0], facing: 'right' };
+}
+export function traderPose(status: string, now: number, id: string, reducedMotion: boolean,
+  desk?: Point, layout?: ReturnType<typeof layoutScene>): Pose {
+  if (status !== 'AGUARDANDO' || reducedMotion) return atDesk;
+  const seed = hashId(id);
+  if (!desk || !layout) {
+    const phase = ((now + seed % 7000) % 12000) / 12000;
+    if (phase < .16 || phase > .86) return atDesk;
+    const t = phase < .40 ? (phase - .16) / .24 : phase < .63 ? 1 : 1 - (phase - .63) / .23;
+    return { x: 88 * t, y: 56 * t, walking: phase < .40 || phase > .63,
+      stride: Math.sin(now / 155) * 5, facing: phase > .63 ? 'left' : 'right', activity: phase < .40 || phase > .63 ? 'walking' : 'coffee' };
+  }
+  const index = layout.stations.findIndex(s => s.id === id);
+  if (index < 0) return atDesk;
+  const row = Math.floor(index / layout.cols), col = index % layout.cols;
+  const destination = layout.amenities[seed % layout.amenities.length];
+  // Stay in the column seam until the social aisle: never cut across other desks.
+  const seam = (col + 1) * 240, deskY = (row + .5) * 240;
+  const aisleY = (layout.deskRows + 1) * 240;
+  const stopX = (destination.kind === 'pool' ? -100 : destination.kind === 'meeting' ? 100 : 0) + (seed % 3 - 1) * 14;
+  const destinationX = ((['pool', 'coffee', 'meeting'] as const).indexOf(destination.kind) + .5) * layout.cols * 240 / 3;
+  const points: Point[] = [desk, iso(seam, deskY), iso(seam, aisleY),
+    iso(destinationX, aisleY), { x: destination.x + stopX, y: destination.y + 88 }];
+  const length = points.slice(1).reduce((total, p, i) => total + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0);
+  const trip = Math.max(3500, length / 90 * 1000);
+  const pause = 6000 + seed % 4000;
+  const cycle = 9000 + trip * 2 + pause + 9000;
+  const t = ((now + seed % 19000) % cycle + cycle) % cycle;
+  if (t < 9000 || t >= 9000 + trip * 2 + pause) return atDesk;
+  if (t >= 9000 + trip && t < 9000 + trip + pause) {
+    const p = points[points.length - 1];
+    return { x: p.x - desk.x, y: p.y - desk.y, walking: false, stride: 0, facing: 'right', activity: destination.kind };
+  }
+  const outgoing = t < 9000 + trip;
+  const part = outgoing ? (t - 9000) / trip : 1 - (t - 9000 - trip - pause) / trip;
+  const { point, facing } = along(points, part);
+  return { x: point.x - desk.x, y: point.y - desk.y, walking: true,
+    stride: Math.sin(now / 145) * 5, facing: outgoing ? facing : facing === 'left' ? 'right' : 'left', activity: 'walking' };
+}
+/** Avatar targeting follows its visual position; no backend mutation or fake presence. */
+export function hitAgent(pointer: Point, stations: readonly { id: string; status: string }[],
+  layout: ReturnType<typeof layoutScene>, camera: Camera, now: number, reducedMotion: boolean): string | null {
+  const statuses = new Map(stations.map(s => [s.id, s.status]));
+  let closest: string | null = null, distance = Infinity;
+  for (const desk of layout.stations) {
+    const status = statuses.get(desk.id);
+    if (!status || !avatarVisible(status)) continue;
+    const pose = traderPose(status, now, desk.id, reducedMotion, desk, layout);
+    const screen = toScreen({ x: desk.x + pose.x, y: desk.y + pose.y - 20 }, camera);
+    const delta = Math.hypot(screen.x - pointer.x, screen.y - pointer.y);
+    if (delta < Math.max(16, camera.scale * 29) && delta < distance) { closest = desk.id; distance = delta; }
+  }
+  return closest;
 }
 export function layoutScene(items: readonly { id: string }[]) {
   const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));

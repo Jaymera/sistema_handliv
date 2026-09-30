@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef } from 'react';
 import type { FloorSceneProps } from './types';
-import { Camera, Point, fitCamera, hitStation, iso, layoutScene, money, toScreen, traderPose, zoomCamera } from './sceneGeometry';
+import { Camera, Point, agentAppearance, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, toScreen, traderPose, zoomCamera } from './sceneGeometry';
 
 const C = { bg: '#0A1120', ink: '#E9EFF9', muted: '#8498B7', green: '#16D39A', blue: '#4C8DFF', red: '#FF7289' };
 type Layout = ReturnType<typeof layoutScene>;
@@ -75,24 +75,10 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
       for(let j=0;j<3;j++) rect(x+7,y+14+j*4,18-j*4,1,offline?'#34435A':'#48768D');
     });
     poly([{x:-27,y:-21},{x:-5,y:-29},{x:13,y:-20},{x:-10,y:-12}],'#8392A6');
-    // The chair stays by the desk; an idle trader takes a short walk along the aisle.
-    const pose=traderPose(s.status,now,s.id,props.reducedMotion);
-    ctx.save();if(pose.walking)ctx.translate(pose.x,pose.y);
-    if(!pose.walking){
+    // Chair remains at the desk even when the trader visits the social area.
     rect(-21,25,12,7,'#060B14',3);rect(8,27,12,7,'#060B14',3);
     line({x:-10,y:9},{x:-16,y:26},'#27344B',8);line({x:7,y:9},{x:13,y:29},'#27344B',8);
     rect(-24,-14,47,30,'#0A1426',10);rect(-3,12,5,20,'#63718A');line({x:-20,y:34},{x:20,y:34},'#63718A',3);
-    }else{
-      line({x:-9,y:3},{x:-10+pose.stride,y:29},'#27344B',8);
-      line({x:8,y:3},{x:10-pose.stride,y:29},'#27344B',8);
-      rect(-19,28,12,6,'#060B14',2);rect(8,28,12,6,'#060B14',2);
-    }
-    rect(-16,-30,31,40,offline?'#38465B':'#536D98',10);
-    line({x:-12,y:-23},{x:-27,y:-18},'#7893B8',7);line({x:12,y:-22},{x:23,y:-28},'#7893B8',7);
-    ctx.fillStyle='#D2A183';ctx.beginPath();ctx.ellipse(-1,-39,12,14,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#252332';ctx.beginPath();ctx.ellipse(-2,-45,12,8,-.2,0,Math.PI*2);ctx.fill();
-    line({x:-12,y:-40},{x:-12,y:-32},'#0C172A',3);
-    ctx.restore();
     // Screen-aligned name plate remains readable while inspecting a station.
     rect(-90,40,180,65,'#0B1527',7);rect(-90,40,3,65,color,2);
     text(s.name.length>23?s.name.slice(0,22)+'…':s.name,-80,57,12,C.ink,700);
@@ -122,6 +108,36 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
       rect(-83,-27,166,64,'#213F55',23);rect(-76,-22,152,54,'#576E83',19);
       for(const x of [-56,-18,20,58]){rect(x,-44,19,12,'#243D56',5);rect(x,39,19,12,'#243D56',5);}
       rect(-31,-7,62,3,C.blue,2);text('REUNIÃO',-29,60,10,C.muted,700);
+    }
+    ctx.restore();
+  }
+  // Agents are rendered after furniture, in foot-depth order, so a visitor stays visible.
+  const people=layout.stations.flatMap(pos=>{
+    const station=byId.get(pos.id);
+    if(!station||!avatarVisible(station.status))return [];
+    const pose=traderPose(station.status,now,pos.id,props.reducedMotion,pos,layout);
+    return [{pos,pose,station,appearance:agentAppearance(pos.id)}];
+  }).sort((a,b)=>(a.pos.y+a.pose.y)-(b.pos.y+b.pose.y));
+  for(const {pos,pose,station,appearance} of people){
+    const p=toScreen({x:pos.x+pose.x,y:pos.y+pose.y},camera);
+    if(p.x<-45||p.x>width+45||p.y<-70||p.y>height+50)continue;
+    ctx.save();ctx.translate(pos.x+pose.x,pos.y+pose.y);
+    const step=pose.walking?pose.stride:0;
+    const breathing=props.reducedMotion?0:Math.sin(now/730+(pos.x%13))*.8;
+    ctx.fillStyle='#07101D';ctx.beginPath();ctx.ellipse(0,30,19,6,0,0,Math.PI*2);ctx.fill();
+    line({x:-9,y:2},{x:-10+step,y:28},'#26354A',8);
+    line({x:8,y:2},{x:10-step,y:28},'#26354A',8);
+    rect(-18+step,27,13,6,'#0A0C16',2);rect(7-step,27,13,6,'#0A0C16',2);
+    rect(-16,-30+breathing,31,40,appearance.jacket,10);
+    const hand=pose.activity==='desk'&&!props.reducedMotion?Math.sin(now/190+(pos.y%17))*3:0;
+    line({x:-12,y:-22},{x:-24,y:-18+hand},appearance.jacket,7);
+    line({x:12,y:-22},{x:23,y:-26-hand},appearance.jacket,7);
+    ctx.fillStyle=appearance.skin;ctx.beginPath();ctx.ellipse(-1,-39+breathing,12,14,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=appearance.hair;ctx.beginPath();ctx.ellipse(-2,-46+breathing,12,8,-.2,0,Math.PI*2);ctx.fill();
+    if(pose.facing==='left')line({x:-9,y:-38},{x:-9,y:-33},'#1B2432',2);
+    else line({x:8,y:-38},{x:8,y:-33},'#1B2432',2);
+    if(pose.activity!=='desk'){
+      rect(-41,-72,82,18,'#0B1527',5);text(station.name.length>11?station.name.slice(0,10)+'…':station.name,-35,-59,9,C.ink,700);
     }
     ctx.restore();
   }
@@ -173,10 +189,11 @@ function FloorScene(props: FloorSceneProps) {
     control.current=type=>{camera=type==='fit'?fitCamera(layout.bounds,width,height):zoomCamera(camera,{x:width/2,y:height/2},type==='in'?1.25:.8);request();};
     const point=(e:PointerEvent|WheelEvent):Point=>{const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
     const down=(e:PointerEvent)=>{if(e.button!==0)return;const p=point(e);pointers.set(e.pointerId,p);canvas.setPointerCapture(e.pointerId);if(pointers.size===1){start=p;dragged=false;}else{dragged=true;const [a,b]=[...pointers.values()];pinchDistance=Math.hypot(a.x-b.x,a.y-b.y);}canvas.style.cursor='grabbing';};
-    const move=(e:PointerEvent)=>{const old=pointers.get(e.pointerId),p=point(e);if(!old){canvas.style.cursor=hitStation(p,layout.stations,camera)?'pointer':'grab';return;}pointers.set(e.pointerId,p);
+    const target=(p:Point)=>hitAgent(p,latest.current.stations,layout,camera,Date.now(),latest.current.reducedMotion)||hitStation(p,layout.stations,camera);
+    const move=(e:PointerEvent)=>{const old=pointers.get(e.pointerId),p=point(e);if(!old){canvas.style.cursor=target(p)?'pointer':'grab';return;}pointers.set(e.pointerId,p);
       if(pointers.size===2){const[a,b]=[...pointers.values()];const dist=Math.hypot(a.x-b.x,a.y-b.y);if(pinchDistance>0)camera=zoomCamera(camera,{x:(a.x+b.x)/2,y:(a.y+b.y)/2},dist/pinchDistance);pinchDistance=dist;dragged=true;}
       else {if(start&&Math.hypot(p.x-start.x,p.y-start.y)>5)dragged=true;if(dragged)camera={...camera,x:camera.x+p.x-old.x,y:camera.y+p.y-old.y};}request();};
-    const up=(e:PointerEvent)=>{if(!pointers.has(e.pointerId))return;const select=!dragged&&pointers.size===1&&e.type==='pointerup';pointers.delete(e.pointerId);if(select){const id=hitStation(point(e),layout.stations,camera);if(id)latest.current.onSelect(id);}if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);canvas.style.cursor='grab';request();};
+    const up=(e:PointerEvent)=>{if(!pointers.has(e.pointerId))return;const select=!dragged&&pointers.size===1&&e.type==='pointerup';pointers.delete(e.pointerId);if(select){const id=target(point(e));if(id)latest.current.onSelect(id);}if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);canvas.style.cursor='grab';request();};
     const wheel=(e:WheelEvent)=>{e.preventDefault();camera=zoomCamera(camera,point(e),Math.exp(-e.deltaY*.001));request();};
     const visibility=()=>{if(document.hidden){cancelAnimationFrame(frame);frame=0;}else request();};
     canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});document.addEventListener('visibilitychange',visibility);

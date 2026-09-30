@@ -47,11 +47,13 @@ def test_live_scores_saved_unscored_real_article(monkeypatch):
     response = setup_live(monkeypatch, DB([saved('Excellent profit growth')]))
     assert response['score']['subscores']['sentiment'] > 50
     assert response['news_items'][0]['sentiment_score'] > 0
+    assert response['sentiment_sample_count'] == 1
 
 
 def test_live_without_any_news_exposes_no_sentiment_measurement(monkeypatch):
     response = setup_live(monkeypatch, DB([]))
     assert response['score']['subscores']['sentiment'] is None
+    assert response['sentiment_sample_count'] == 0
     assert 'sem notícias' in response['ai_explanation'].lower()
 
 

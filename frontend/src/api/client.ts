@@ -130,6 +130,7 @@ export const assetsApi = {
         sentiment_label: string | null;
         sentiment_score: number | null;
       }[];
+      sentiment_sample_count?: number;
       technical_votes: Record<string, number>;
       price_history: { trade_date: string; close: number }[];
     }>(`/assets/${encodeURIComponent(symbol)}/live-analysis`),

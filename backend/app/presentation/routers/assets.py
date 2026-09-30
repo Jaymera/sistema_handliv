@@ -429,6 +429,7 @@ def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_c
         "indicators_explanation": explain_indicators(result.technical.inputs),
         "news_summary": summarize_news(news_items),
         "news_items": _visible_news_items(news_items_with_sentiment, articles),
+        "sentiment_sample_count": len(all_sentiments),
         "technical_votes": result.technical.inputs.get("votes", {}),
         "price_history": bars[-30:] if bars else [],
     }

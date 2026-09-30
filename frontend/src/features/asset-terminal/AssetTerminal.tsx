@@ -4,7 +4,8 @@ import Svg, { Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import type { assetsApi } from '@/api/client';
 import { FavoriteStar, MarketBadge } from '@/components/ui';
-import { CountUp, Meter, PriceChart, Pulse, T } from './visuals';
+import { CountUp, Meter, PriceChart, T } from './visuals';
+import { analysisEvidence } from './evidence';
 
 type Analysis = Awaited<ReturnType<typeof assetsApi.liveAnalysis>>;
 type Props = { data: Analysis; inWatchlist: boolean; onToggle: () => void; onBack: () => void; onRefresh: () => void; refreshing: boolean };
@@ -49,6 +50,7 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
   const quarter = (usable - gap * 3) / 4;
   const full = usable;
   const score = data.score;
+  const evidence = analysisEvidence(data);
   const ind = data.indicators;
   const fund = data.fundamentals;
   const color = data.recommendation_color === 'green' || data.recommendation_color === 'lime' ? T.green
@@ -87,7 +89,7 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
     <View style={[styles.shell, { width: usable }]}>
       <View style={styles.topline}><View style={styles.inline}><View style={styles.brandMark}><Text style={styles.brandLetter}>H</Text></View>
         <View><Text style={styles.eyebrow}>HANDLIV  /  QUANT ANALYTICS</Text><Text style={styles.muted}>TERMINAL DE ANÁLISE · DADOS DA PLATAFORMA</Text></View></View>
-        <View style={styles.inline}><Pulse /><Text style={[styles.eyebrow, { color: T.green }]}>ANÁLISE ATIVA</Text>
+        <View style={styles.inline}><Text style={[styles.eyebrow, { color: T.cyan }]}>ANÁLISE SOB DEMANDA</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="Atualizar análise" onPress={onRefresh} disabled={refreshing} style={styles.iconButton}>
             <Ionicons name="refresh" color={T.cyan} size={17} /></Pressable></View>
       </View>
@@ -96,15 +98,36 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
           <Text style={styles.title}>{data.name}</Text>
           <Text style={styles.muted}>{[data.sector, data.industry].filter(Boolean).join('  /  ') || 'Setor não informado'}</Text></View>
         <View style={{ alignItems: tablet ? 'flex-end' : 'flex-start', gap: 5 }}>
-          <View style={styles.inline}><Text style={styles.eyebrow}>ÚLTIMO PREÇO</Text><FavoriteStar active={inWatchlist} onPress={onToggle} size={24} /></View>
+          <View style={styles.inline}><Text style={styles.eyebrow}>ÚLTIMO FECHAMENTO DIÁRIO</Text><FavoriteStar active={inWatchlist} onPress={onToggle} size={24} /></View>
           <View><Text style={styles.price}>{data.last_price == null ? '—' : money(data.last_price)}</Text>
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: flashColor, opacity: priceFlash.current }]} /></View>
+          <Text style={styles.dim}>{evidence.priceDate ? `Pregão de ${evidence.priceDate} · não é cotação em tempo real` : 'Data do fechamento indisponível · não é cotação em tempo real'}</Text>
           {data.last_price != null && ind.ema20 != null ? <Text style={[styles.muted, { color: data.last_price > ind.ema20 ? T.green : T.red }]}>
             {data.last_price > ind.ema20 ? '▲ Acima EMA20' : '▼ Abaixo EMA20'}</Text> : null}
         </View>
       </View>
 
       <View style={styles.grid}>
+        <Panel title="COBERTURA DOS DADOS · FONTES DA ANÁLISE" width={full} accent={T.cyan}>
+          <View style={styles.evidenceGrid}>
+            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
+              <Text style={styles.eyebrow}>PREÇO / HISTÓRICO</Text>
+              <Text style={styles.metricValue}>{evidence.priceBars ? `${evidence.priceBars} ${evidence.priceBars === 1 ? 'pregão diário' : 'pregões diários'}` : 'Histórico indisponível'}</Text>
+              <Text style={styles.dim}>{evidence.priceDate ? `Fechamento mais recente: ${evidence.priceDate}` : 'Sem data de fechamento verificável'}</Text>
+            </View>
+            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
+              <Text style={styles.eyebrow}>NOTÍCIAS / SENTIMENTO</Text>
+              <Text style={styles.metricValue}>{evidence.scoredNews === null ? 'Amostra não informada' : `${evidence.scoredNews} notícia${evidence.scoredNews === 1 ? '' : 's'} pontuada${evidence.scoredNews === 1 ? '' : 's'}`}</Text>
+              <Text style={styles.dim}>{`${evidence.newsCount} exibida${evidence.newsCount === 1 ? '' : 's'} · ${evidence.newsSources} fonte${evidence.newsSources === 1 ? '' : 's'} identificada${evidence.newsSources === 1 ? '' : 's'}`}</Text>
+            </View>
+            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
+              <Text style={styles.eyebrow}>COBERTURA DA ANÁLISE</Text>
+              <Text style={styles.metricValue}>{`${evidence.technicalCount} indicadores · ${evidence.fundamentalsCount} fundamentos`}</Text>
+              <Text style={styles.dim}>Valores disponíveis nesta resposta, sem preenchimento estimado.</Text>
+            </View>
+          </View>
+          <Text style={styles.dim}>Amostra de notícias pontuadas pode ser maior que as notícias exibidas. Sem amostra, o sentimento não é uma medição.</Text>
+        </Panel>
         <Panel title="COMPOSITE SCORE" width={desktop ? quarter : tablet ? half : full} accent={scoreColor}>
           <View style={styles.scoreCenter}><Svg width={142} height={142} viewBox="0 0 142 142">
             <Circle cx="71" cy="71" r="57" stroke={T.track} strokeWidth="9" fill="none" />
@@ -113,7 +136,7 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
           </Svg><View style={styles.scoreText}><CountUp value={score.final_score} color={scoreColor} /><Text style={styles.dim}>/ 100</Text></View></View>
           <Meter value={score.final_score} color={scoreColor} /><View style={styles.metricRow}><Text style={styles.muted}>Confiança da análise</Text><Text style={styles.metricValue}>{score.confidence}%</Text></View>
         </Panel>
-        <Panel title="PRICE HISTORY / 1D" width={desktop ? half : tablet ? half : full} accent={T.cyan}>
+        <Panel title="HISTÓRICO / FECHAMENTO DIÁRIO" width={desktop ? half : tablet ? half : full} accent={T.cyan}>
           <PriceChart history={data.price_history ?? []} currency={data.currency} />
         </Panel>
         <Panel title="SIGNAL ENGINE" width={desktop ? quarter : full} accent={color}>
@@ -196,6 +219,8 @@ const styles = StyleSheet.create({
   iconButton: { borderWidth: 1, borderColor: T.line, padding: 7, borderRadius: 4, marginLeft: 6 },
   assetHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 15, paddingVertical: 22 }, title: { fontSize: 29, fontWeight: '800', color: T.ink, marginVertical: 5 }, price: { fontSize: 27, fontWeight: '800', color: T.ink, fontFamily: mono },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, panel: { borderWidth: 1, borderColor: T.line, backgroundColor: T.panel, borderRadius: 5, padding: 15, minWidth: 0, overflow: 'hidden' }, panelHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 }, headMark: { width: 4, height: 12, borderRadius: 2 }, panelTitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3, color: T.muted, fontFamily: mono },
+  evidenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  evidenceTile: { minWidth: 0, gap: 7, padding: 12, backgroundColor: T.bg, borderWidth: 1, borderColor: T.line, borderRadius: 7 },
   scoreCenter: { alignItems: 'center', justifyContent: 'center', height: 150 }, scoreText: { position: 'absolute', alignItems: 'center' },
   metricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 7 }, metricValue: { fontSize: 14, fontWeight: '700', fontFamily: mono, color: T.ink, textAlign: 'right' },
   signal: { fontSize: 24, fontWeight: '900', lineHeight: 30, marginVertical: 10 }, divider: { height: 1, backgroundColor: T.line, marginVertical: 12 }, big: { fontSize: 28, fontWeight: '800', fontFamily: mono, marginBottom: 9 }, barRow: { marginBottom: 9 },

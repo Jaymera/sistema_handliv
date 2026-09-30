@@ -2,7 +2,7 @@ import "../../src/global.css";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 
@@ -15,6 +15,8 @@ export default function MarketsScreen() {
   const [market, setMarket] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const { width } = useWindowDimensions();
+  const columns = width >= 1180 ? 3 : width >= 720 ? 2 : 1;
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -38,10 +40,11 @@ export default function MarketsScreen() {
 
   return (
     <View className="flex-1 bg-night">
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 32 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 18, paddingBottom: 32, width: '100%', maxWidth: 1240, alignSelf: 'center' }}>
         {/* Header */}
-        <Text className="text-ink-faint text-xs font-bold tracking-widest mb-1">HANDLIV</Text>
-        <Text className="text-ink text-2xl font-bold mb-4">Mercados</Text>
+        <Text className="text-ink-faint text-xs font-bold tracking-widest mb-1">HANDLIV / EXPLORAR</Text>
+        <Text className="text-ink text-2xl font-bold mb-2">Mercados</Text>
+        <Text className="text-ink-soft text-sm mb-4">Busque um ativo para consultar fechamentos diários, indicadores, fundamentos e notícias disponíveis. A análise não é cotação em tempo real.</Text>
 
         {/* Search */}
         <View className="flex-row items-center bg-night-700 border border-night-500 rounded-xl px-3 mb-4">
@@ -88,21 +91,25 @@ export default function MarketsScreen() {
           </View>
         </ScrollView>
 
-        {/* List */}
+        {/* Catalog count is the server's filtered total, not a quote feed. */}
+        {data ? <View className="flex-row items-center justify-between mb-3">
+          <Text className="text-ink font-bold text-sm">{data.total} ativo{data.total === 1 ? '' : 's'} encontrado{data.total === 1 ? '' : 's'}</Text>
+          <Text className="text-ink-faint text-xs">{market ?? 'Todos os mercados'}</Text>
+        </View> : null}
         {isLoading ? (
           <ActivityIndicator className="py-10" color={C.brand} />
         ) : items.length > 0 ? (
-          <View className="gap-2">
+          <>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             {items.map((item) => (
-              <Card key={item.symbol} className="flex-row items-center px-4 py-3">
-                <Pressable className="flex-1" onPress={() => router.push(`/asset/${item.symbol}`)}>
+              <Card key={item.symbol} className="flex-row items-center px-4 py-3" style={{ width: columns === 1 ? '100%' : columns === 2 ? '49%' : '32%', minWidth: 0 }}>
+                <Pressable className="flex-1" onPress={() => router.push(`/asset/${item.symbol}`)} accessibilityRole="button" accessibilityLabel={`Analisar ${item.display_symbol || item.symbol}`}>
                   <View className="flex-row items-center gap-2">
                     <Text className="text-ink font-bold text-base">{item.display_symbol || item.symbol}</Text>
                     <MarketBadge market={item.market} />
                   </View>
-                  <Text className="text-ink-soft text-sm" numberOfLines={1}>
-                    {item.name}
-                  </Text>
+                  <Text className="text-ink-soft text-sm" numberOfLines={1}>{item.name}</Text>
+                  <Text className="text-ink-faint text-xs mt-1">Abrir análise →</Text>
                 </Pressable>
                 <FavoriteStar
                   active={watchSymbols.has(item.symbol)}
@@ -110,16 +117,16 @@ export default function MarketsScreen() {
                 />
               </Card>
             ))}
-            {hasMore ? (
-              <Pressable
-                className="mt-2 py-3 rounded-xl border items-center"
-                style={{ borderColor: C.line, backgroundColor: C.surface }}
-                onPress={() => setPage((p) => p + 1)}
-              >
-                <Text className="text-brand font-bold">Carregar mais</Text>
-              </Pressable>
-            ) : null}
           </View>
+          <View className="flex-row gap-2 mt-3">
+            {page > 1 ? <Pressable className="flex-1 py-3 rounded-xl border items-center" style={{ borderColor: C.line, backgroundColor: C.surface }} onPress={() => setPage((p) => Math.max(1, p - 1))}>
+              <Text className="text-brand font-bold">Página anterior</Text>
+            </Pressable> : null}
+            {hasMore ? <Pressable className="flex-1 py-3 rounded-xl border items-center" style={{ borderColor: C.line, backgroundColor: C.surface }} onPress={() => setPage((p) => p + 1)}>
+              <Text className="text-brand font-bold">Próxima página</Text>
+            </Pressable> : null}
+          </View>
+          </>
         ) : (
           <Empty text={q.trim() ? `Nenhum resultado para "${q.trim()}".` : "Nenhum ativo disponível neste mercado."} />
         )}
