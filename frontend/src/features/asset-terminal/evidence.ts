@@ -14,6 +14,13 @@ export function analysisEvidence(data: EvidenceInput) {
     /^\d{4}-\d{2}-\d{2}$/.test(b.trade_date ?? '') && typeof b.close === 'number' && Number.isFinite(b.close));
   const latestDate = datedBars.reduce<string | null>((latest, bar) =>
     !latest || bar.trade_date! > latest ? bar.trade_date! : latest, null);
+  // Compare only distinct session dates, never treat duplicate/invalid rows as intraday ticks.
+  const sessions = new Map(datedBars.map(bar => [bar.trade_date!, bar.close!]));
+  const dates = Array.from(sessions.keys()).sort();
+  const last = dates.length >= 2 ? sessions.get(dates[dates.length - 1])! : null;
+  const previous = dates.length >= 2 ? sessions.get(dates[dates.length - 2])! : null;
+  const validPair = last != null && previous != null && last > 0 && previous > 0;
+  const dailyChange = validPair ? last - previous : null;
   const articles = data.news_items ?? [];
   const measurable = articles.filter(a => typeof a.sentiment_score === 'number' && Number.isFinite(a.sentiment_score));
   const sources = new Set(articles.map(a => a.source?.trim()).filter(Boolean));
@@ -21,7 +28,9 @@ export function analysisEvidence(data: EvidenceInput) {
     .filter(v => typeof v === 'number' && Number.isFinite(v)).length;
   return {
     priceDate: latestDate ? latestDate.split('-').reverse().join('/') : null,
-    priceBars: datedBars.length,
+    priceBars: dates.length,
+    dailyChange,
+    dailyChangePct: dailyChange == null ? null : (dailyChange / previous!) * 100,
     newsCount: articles.length,
     measuredNews: measurable.length,
     scoredNews: Number.isSafeInteger(data.sentiment_sample_count) && (data.sentiment_sample_count ?? -1) >= 0

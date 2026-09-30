@@ -102,6 +102,10 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
           <View><Text style={styles.price}>{data.last_price == null ? '—' : money(data.last_price)}</Text>
             <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: flashColor, opacity: priceFlash.current }]} /></View>
           <Text style={styles.dim}>{evidence.priceDate ? `Pregão de ${evidence.priceDate} · não é cotação em tempo real` : 'Data do fechamento indisponível · não é cotação em tempo real'}</Text>
+          <Text style={[styles.muted, { color: evidence.dailyChange == null ? T.muted : evidence.dailyChange >= 0 ? T.green : T.red }]}>
+            {evidence.dailyChange == null || evidence.dailyChangePct == null ? 'Variação entre fechamentos: indisponível' :
+              `Entre os 2 últimos fechamentos: ${evidence.dailyChange >= 0 ? '+' : '−'}${money(Math.abs(evidence.dailyChange))} (${evidence.dailyChangePct >= 0 ? '+' : ''}${evidence.dailyChangePct.toFixed(2)}%)`}
+          </Text>
           {data.last_price != null && ind.ema20 != null ? <Text style={[styles.muted, { color: data.last_price > ind.ema20 ? T.green : T.red }]}>
             {data.last_price > ind.ema20 ? '▲ Acima EMA20' : '▼ Abaixo EMA20'}</Text> : null}
         </View>
