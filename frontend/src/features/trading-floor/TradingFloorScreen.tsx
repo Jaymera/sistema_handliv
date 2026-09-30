@@ -43,7 +43,7 @@ export default function TradingFloorScreen() {
     ['Posições abertas', summary.openPositions == null ? '—' : String(summary.openPositions)],
     ['Magics ativos', summary.online == null ? '—' : String(summary.online)],
   ];
-  const scene = (large: boolean) => <View style={[styles.sceneShell, large ? { flex: 1 } : { height: mobile ? 480 : 550 }]}>
+  const scene = (large: boolean) => <View style={[styles.sceneShell, large ? { flex: 1 } : { height: mobile ? 520 : 740 }]}>
     <View style={styles.toolbar}>
       <View style={{ flex: 1, minWidth: 130 }}><Text style={styles.eyebrow}>LIVE OPERATIONS</Text><Text style={styles.sceneTitle}>{floor.demo ? 'Pregão simulado' : 'Mesas por Magic Number'}</Text></View>
       <Button label="−" onPress={() => send('out')} /><Button label="+" onPress={() => send('in')} />
@@ -54,7 +54,7 @@ export default function TradingFloorScreen() {
       <FloorScene stations={floor.stations} summary={summary} events={floor.events} selectedId={selectedId} onSelect={setSelectedId} command={command} reducedMotion={reducedMotion} demo={floor.demo} />
       {!floor.stations.length && <View pointerEvents="none" style={styles.emptyScene}><Text style={styles.sceneTitle}>Aguardando Magics</Text><Text style={[styles.caption, { textAlign: 'center', maxWidth: 320 }]}>{floor.accounts.length ? 'A conta está cadastrada, mas ainda não enviou telemetria por Magic. Atualize o EA para mostrar mesas reais.' : 'Conecte uma conta MT4/MT5 ou ative a demonstração para conhecer o Trading Floor.'}</Text></View>}
     </View>
-    <View style={styles.sceneFooter}><Text style={styles.caption}>{floor.stations.length} estações · selecione uma mesa para detalhes</Text><Badge text={floor.demo ? 'DEMO' : 'REAL'} color={floor.demo ? C.amber : C.brand} /></View>
+    <View style={styles.sceneFooter}><Text style={styles.caption}>{floor.stations.length} estações · pessoas e pausas são animação visual; clique na pessoa ou mesa</Text><Badge text={floor.demo ? 'DEMO' : 'REAL'} color={floor.demo ? C.amber : C.brand} /></View>
   </View>;
   return <View style={{ flex: 1, backgroundColor: C.bg }}>
     <ScrollView contentContainerStyle={[styles.content, { paddingHorizontal: mobile ? 12 : 28 }]}>

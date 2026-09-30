@@ -39,8 +39,25 @@ export function agentAppearance(id: string) {
     hair: ['#252332', '#42362F', '#322B50', '#594232'][Math.floor(seed / 20) % 4],
   };
 }
-type SocialArea = 'pool' | 'coffee' | 'meeting';
+type SocialArea = 'pool' | 'coffee' | 'meeting' | 'chat' | 'rest';
 type Pose = { x: number; y: number; walking: boolean; stride: number; facing: 'left' | 'right'; activity: 'desk' | 'walking' | SocialArea };
+/** Shared Canvas/SVG body language, independent of financial telemetry. */
+export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean) {
+  const wave = reducedMotion ? 0 : Math.sin(now / 420);
+  const step = reducedMotion ? 0 : pose.stride;
+  const left = { x: -24, y: -16 }, right = { x: 23, y: -16 };
+  let prop: 'cup' | 'phone' | 'cue' | null = null;
+  let lean = 0;
+  switch (pose.activity) {
+    case 'walking': left.y += step * 1.4; right.y -= step * 1.4; lean = step * .15; break;
+    case 'desk': left.y = -20 + wave * 2; right.y = -22 - wave * 2; break;
+    case 'coffee': right.x = 15; right.y = -31 + wave * 6; prop = 'cup'; break;
+    case 'chat': case 'meeting': right.x = 28 + wave * 4; right.y = -30 + wave * 8; left.y = -18 - wave * 3; break;
+    case 'rest': right.x = 18; right.y = -28; left.x = -10; left.y = -23; lean = -3; prop = 'phone'; break;
+    case 'pool': right.x = 32; right.y = -17 + wave * 2; left.x = -28; left.y = -13; lean = 4; prop = 'cue'; break;
+  }
+  return { left, right, prop, lean };
+}
 const atDesk: Pose = { x: 0, y: 0, walking: false, stride: 0, facing: 'right', activity: 'desk' };
 function hashId(id: string): number {
   let value = 2166136261;
@@ -73,26 +90,34 @@ export function traderPose(status: string, now: number, id: string, reducedMotio
   const index = layout.stations.findIndex(s => s.id === id);
   if (index < 0) return atDesk;
   const row = Math.floor(index / layout.cols), col = index % layout.cols;
-  const destination = layout.amenities[seed % layout.amenities.length];
-  // Stay in the column seam until the social aisle: never cut across other desks.
+  // Original Handliv choreography, inspired by room/corridor routing in AgentFleet.
+  // All feet stay in column seams and the front social aisle; no table crossings.
   const seam = (col + 1) * 240, deskY = (row + .5) * 240;
   const aisleY = (layout.deskRows + 1) * 240;
-  const stopX = (destination.kind === 'pool' ? -100 : destination.kind === 'meeting' ? 100 : 0) + (seed % 3 - 1) * 14;
-  const destinationX = ((['pool', 'coffee', 'meeting'] as const).indexOf(destination.kind) + .5) * layout.cols * 240 / 3;
-  const points: Point[] = [desk, iso(seam, deskY), iso(seam, aisleY),
-    iso(destinationX, aisleY), { x: destination.x + stopX, y: destination.y + 88 }];
-  const length = points.slice(1).reduce((total, p, i) => total + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0);
-  const trip = Math.max(3500, length / 90 * 1000);
-  const pause = 6000 + seed % 4000;
-  const cycle = 9000 + trip * 2 + pause + 9000;
-  const t = ((now + seed % 19000) % cycle + cycle) % cycle;
-  if (t < 9000 || t >= 9000 + trip * 2 + pause) return atDesk;
-  if (t >= 9000 + trip && t < 9000 + trip + pause) {
+  const routes = layout.amenities.map((area, i) => {
+    const destinationX = (i + .5) * layout.cols * 240 / 3;
+    const end = iso(destinationX + (seed % 5 - 2) * 22, aisleY - 36);
+    return [desk, iso(seam, deskY), iso(seam, aisleY), iso(destinationX, aisleY), end];
+  });
+  const lengths = routes.map(points => points.slice(1).reduce((total, p, i) => total + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0));
+  // A common period keeps destinations changing only when safely back at the desk.
+  const trip = Math.max(3500, Math.max(...lengths) / 105 * 1000);
+  const pause = 11000 + seed % 6000, deskPause = 4500 + seed % 2500;
+  const cycle = deskPause * 2 + trip * 2 + pause;
+  const absolute = now + seed % Math.floor(cycle);
+  const round = Math.floor(absolute / cycle);
+  const routine = ((round + seed % 5) % 5 + 5) % 5;
+  const activity: SocialArea = (['pool', 'coffee', 'meeting', 'chat', 'rest'] as const)[routine];
+  const destinationIndex = activity === 'pool' || activity === 'rest' ? 0 : activity === 'meeting' ? 2 : 1;
+  const points = routes[destinationIndex];
+  const t = ((absolute % cycle) + cycle) % cycle;
+  if (t < deskPause || t >= deskPause + trip * 2 + pause) return atDesk;
+  if (t >= deskPause + trip && t < deskPause + trip + pause) {
     const p = points[points.length - 1];
-    return { x: p.x - desk.x, y: p.y - desk.y, walking: false, stride: 0, facing: 'right', activity: destination.kind };
+    return { x: p.x - desk.x, y: p.y - desk.y, walking: false, stride: 0, facing: seed % 2 ? 'left' : 'right', activity };
   }
-  const outgoing = t < 9000 + trip;
-  const part = outgoing ? (t - 9000) / trip : 1 - (t - 9000 - trip - pause) / trip;
+  const outgoing = t < deskPause + trip;
+  const part = outgoing ? (t - deskPause) / trip : 1 - (t - deskPause - trip - pause) / trip;
   const { point, facing } = along(points, part);
   return { x: point.x - desk.x, y: point.y - desk.y, walking: true,
     stride: Math.sin(now / 145) * 5, facing: outgoing ? facing : facing === 'left' ? 'right' : 'left', activity: 'walking' };
@@ -114,8 +139,8 @@ export function hitAgent(pointer: Point, stations: readonly { id: string; status
 }
 export function layoutScene(items: readonly { id: string }[]) {
   const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));
-  const cols = Math.max(3, Math.ceil(Math.sqrt(Math.max(items.length, 10) * 1.4)));
-  const deskRows = Math.max(2, Math.ceil(items.length / cols));
+  const cols = Math.max(3, Math.ceil(Math.sqrt(Math.max(items.length, 1) * 1.4)));
+  const deskRows = Math.max(1, Math.ceil(items.length / cols));
   const rows = deskRows + 2; // lounge plus circulation for the moving dog
   const stations = sorted.map((s, i) => ({ id: s.id, ...iso((i % cols + .5) * 240, (Math.floor(i / cols) + .5) * 240) }));
   const amenities = (['pool', 'coffee', 'meeting'] as const).map((kind, i) => {

@@ -3,7 +3,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { PanResponder, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Polygon, Rect, Text } from 'react-native-svg';
 import type { FloorSceneProps, FloorStation } from './types';
-import { Camera, agentAppearance, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, traderPose, zoomCamera } from './sceneGeometry';
+import { Camera, agentAppearance, avatarGesture, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, traderPose, zoomCamera } from './sceneGeometry';
 
 const INK='#E9EFF9', MUTED='#8498B7', GREEN='#16D39A';
 const Station = memo(function Station({station:s,x,y,selected,demo}:{station:FloorStation;x:number;y:number;selected:boolean;demo:boolean}) {
@@ -35,19 +35,24 @@ const Station = memo(function Station({station:s,x,y,selected,demo}:{station:Flo
 const Avatar = memo(function Avatar({id,name,x,y,pose,now,reducedMotion}:{id:string;name:string;x:number;y:number;pose:ReturnType<typeof traderPose>;now:number;reducedMotion:boolean}) {
   const appearance=agentAppearance(id),step=pose.walking?pose.stride:0;
   const breath=reducedMotion?0:Math.sin(now/730+(x%13))*.8;
-  const hand=pose.activity==='desk'&&!reducedMotion?Math.sin(now/190+(y%17))*3:0;
-  return <G transform={`translate(${x+pose.x} ${y+pose.y})`}>
+  const gesture=avatarGesture(pose,now,reducedMotion);
+  return <G transform={`translate(${x+pose.x} ${y+pose.y}) scale(1.16)`}>
     <Ellipse cx={0} cy={30} rx={19} ry={6} fill="#07101D"/>
     <Line x1={-9} y1={2} x2={-10+step} y2={28} stroke="#26354A" strokeWidth={8}/>
     <Line x1={8} y1={2} x2={10-step} y2={28} stroke="#26354A" strokeWidth={8}/>
     <Rect x={-18+step} y={27} width={13} height={6} rx={2} fill="#0A0C16"/><Rect x={7-step} y={27} width={13} height={6} rx={2} fill="#0A0C16"/>
     <Rect x={-16} y={-30+breath} width={31} height={40} rx={10} fill={appearance.jacket}/>
-    <Line x1={-12} y1={-22} x2={-24} y2={-18+hand} stroke={appearance.jacket} strokeWidth={7}/>
-    <Line x1={12} y1={-22} x2={23} y2={-26-hand} stroke={appearance.jacket} strokeWidth={7}/>
+    <Line x1={-12} y1={-22} x2={gesture.left.x} y2={gesture.left.y} stroke={appearance.jacket} strokeWidth={8}/>
+    <Line x1={12} y1={-22} x2={gesture.right.x} y2={gesture.right.y} stroke={appearance.jacket} strokeWidth={8}/>
+    {[gesture.left,gesture.right].map((p,i)=><Circle key={i} cx={p.x} cy={p.y} r={4} fill={appearance.skin}/>)}
+    {gesture.prop==='cup'&&<><Rect x={gesture.right.x-5} y={gesture.right.y-8} width={11} height={11} rx={3} fill="#F3EADF"/><Circle cx={gesture.right.x+7} cy={gesture.right.y-3} r={4} fill="none" stroke="#F3EADF" strokeWidth={2}/></>}
+    {gesture.prop==='phone'&&<><Rect x={gesture.right.x-5} y={gesture.right.y-11} width={10} height={15} rx={2} fill="#101725"/><Rect x={gesture.right.x-3} y={gesture.right.y-9} width={6} height={10} fill="#91BADA"/></>}
+    {gesture.prop==='cue'&&<Line x1={gesture.left.x-20} y1={gesture.left.y+12} x2={gesture.right.x+24} y2={gesture.right.y-16} stroke="#D7B17A" strokeWidth={3}/>}
+    <Polygon points="-8,-31 0,-24 8,-31" fill="#D9E4ED"/><Line x1={0} y1={-24} x2={0} y2={3} stroke="#34445C" strokeWidth={2}/>
     <Ellipse cx={-1} cy={-39+breath} rx={12} ry={14} fill={appearance.skin}/>
     <Ellipse cx={-2} cy={-46+breath} rx={12} ry={8} fill={appearance.hair}/>
     <Line x1={pose.facing==='left'?-9:8} y1={-38} x2={pose.facing==='left'?-9:8} y2={-33} stroke="#1B2432" strokeWidth={2}/>
-    {pose.activity!=='desk'&&<><Rect x={-41} y={-72} width={82} height={18} rx={5} fill="#0B1527"/>
+    {pose.activity!=='desk'&&<>{!pose.walking&&<><Rect x={-35} y={-94} width={70} height={17} rx={5} fill="#213F55"/><Text x={-29} y={-82} fill="#B8D9E8" fontSize={9}>{({coffee:'CAFÉ',chat:'CONVERSA',meeting:'REUNIÃO',rest:'PAUSA',pool:'SINUCA'} as Record<string,string>)[pose.activity]}</Text></>}<Rect x={-41} y={-72} width={82} height={18} rx={5} fill="#0B1527"/>
       <Text x={-35} y={-59} fill={INK} fontSize={9} fontWeight="700">{name.length>11?name.slice(0,10)+'…':name}</Text></>}
   </G>;
 });
@@ -56,7 +61,7 @@ function FloorScene(props:FloorSceneProps) {
   const [size,setSize]=useState({width:1,height:1});
   const [now,setNow]=useState(Date.now());
   const focused=useIsFocused();
-  useEffect(()=>{if(props.reducedMotion||!focused)return;const timer=setInterval(()=>setNow(Date.now()),200);return()=>clearInterval(timer);},[props.reducedMotion,focused]);
+  useEffect(()=>{if(props.reducedMotion||!focused)return;const timer=setInterval(()=>setNow(Date.now()),50);return()=>clearInterval(timer);},[props.reducedMotion,focused]);
   const layout=useMemo(()=>layoutScene(props.stations),[props.stations]);
   const signature=layout.stations.map(s=>s.id).join('\0');
   const [camera,setCamera]=useState<Camera>({x:0,y:0,scale:1});

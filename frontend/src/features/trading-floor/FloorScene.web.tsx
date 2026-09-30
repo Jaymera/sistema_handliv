@@ -1,6 +1,6 @@
 import React, { memo, useEffect, useRef } from 'react';
 import type { FloorSceneProps } from './types';
-import { Camera, Point, agentAppearance, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, toScreen, traderPose, zoomCamera } from './sceneGeometry';
+import { Camera, Point, agentAppearance, avatarGesture, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, toScreen, traderPose, zoomCamera } from './sceneGeometry';
 
 const C = { bg: '#0A1120', ink: '#E9EFF9', muted: '#8498B7', green: '#16D39A', blue: '#4C8DFF', red: '#FF7289' };
 type Layout = ReturnType<typeof layoutScene>;
@@ -121,7 +121,7 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
   for(const {pos,pose,station,appearance} of people){
     const p=toScreen({x:pos.x+pose.x,y:pos.y+pose.y},camera);
     if(p.x<-45||p.x>width+45||p.y<-70||p.y>height+50)continue;
-    ctx.save();ctx.translate(pos.x+pose.x,pos.y+pose.y);
+    ctx.save();ctx.translate(pos.x+pose.x,pos.y+pose.y);ctx.scale(1.16,1.16);
     const step=pose.walking?pose.stride:0;
     const breathing=props.reducedMotion?0:Math.sin(now/730+(pos.x%13))*.8;
     ctx.fillStyle='#07101D';ctx.beginPath();ctx.ellipse(0,30,19,6,0,0,Math.PI*2);ctx.fill();
@@ -129,14 +129,26 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
     line({x:8,y:2},{x:10-step,y:28},'#26354A',8);
     rect(-18+step,27,13,6,'#0A0C16',2);rect(7-step,27,13,6,'#0A0C16',2);
     rect(-16,-30+breathing,31,40,appearance.jacket,10);
-    const hand=pose.activity==='desk'&&!props.reducedMotion?Math.sin(now/190+(pos.y%17))*3:0;
-    line({x:-12,y:-22},{x:-24,y:-18+hand},appearance.jacket,7);
-    line({x:12,y:-22},{x:23,y:-26-hand},appearance.jacket,7);
+    const gesture=avatarGesture(pose,now,props.reducedMotion);
+    line({x:-12,y:-22},{x:gesture.left.x,y:gesture.left.y},appearance.jacket,8);
+    line({x:12,y:-22},{x:gesture.right.x,y:gesture.right.y},appearance.jacket,8);
+    for(const hand of [gesture.left,gesture.right]){ctx.fillStyle=appearance.skin;ctx.beginPath();ctx.arc(hand.x,hand.y,4,0,Math.PI*2);ctx.fill();}
+    if(gesture.prop==='cup'){
+      rect(gesture.right.x-5,gesture.right.y-8,11,11,'#F3EADF',3);
+      ctx.strokeStyle='#F3EADF';ctx.lineWidth=2;ctx.beginPath();ctx.arc(gesture.right.x+7,gesture.right.y-3,4,-Math.PI/2,Math.PI/2);ctx.stroke();
+      line({x:gesture.right.x,y:gesture.right.y-13},{x:gesture.right.x+2,y:gesture.right.y-19},'#A7BACB',1);
+    }
+    if(gesture.prop==='phone'){rect(gesture.right.x-5,gesture.right.y-11,10,15,'#101725',2);rect(gesture.right.x-3,gesture.right.y-9,6,10,'#91BADA',1);}
+    if(gesture.prop==='cue')line({x:gesture.left.x-20,y:gesture.left.y+12},{x:gesture.right.x+24,y:gesture.right.y-16},'#D7B17A',3);
+    // Shirt collar and visible human hands, not anonymous blocks.
+    poly([{x:-8,y:-31},{x:0,y:-24},{x:8,y:-31}], '#D9E4ED');
+    line({x:0,y:-24},{x:0,y:3},'#34445C',2);
     ctx.fillStyle=appearance.skin;ctx.beginPath();ctx.ellipse(-1,-39+breathing,12,14,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle=appearance.hair;ctx.beginPath();ctx.ellipse(-2,-46+breathing,12,8,-.2,0,Math.PI*2);ctx.fill();
     if(pose.facing==='left')line({x:-9,y:-38},{x:-9,y:-33},'#1B2432',2);
     else line({x:8,y:-38},{x:8,y:-33},'#1B2432',2);
     if(pose.activity!=='desk'){
+      if(!pose.walking){const label={coffee:'CAFÉ',chat:'CONVERSA',meeting:'REUNIÃO',rest:'PAUSA',pool:'SINUCA'}[pose.activity as 'coffee'|'chat'|'meeting'|'rest'|'pool'];rect(-35,-94,70,17,'#213F55',5);text(label,-29,-82,9,'#B8D9E8',750);}
       rect(-41,-72,82,18,'#0B1527',5);text(station.name.length>11?station.name.slice(0,10)+'…':station.name,-35,-59,9,C.ink,700);
     }
     ctx.restore();
@@ -169,7 +181,7 @@ function FloorScene(props: FloorSceneProps) {
   const control=useRef<(type: FloorSceneProps['command']['type']) => void>(()=>{});
   useEffect(()=>{
     const canvas=canvasRef.current!;const ctx=canvas.getContext('2d');if(!ctx)return;
-    let width=1,height=1,dpr=1,frame=0,last=0,dirty=true,disposed=false;
+    let width=1,height=1,dpr=1,frame=0,last=0,lastTargets=-Infinity,dirty=true,disposed=false;
     let layout=layoutScene(latest.current.stations),signature=latest.current.stations.map(s=>s.id).sort().join('\0');
     let camera:Camera=fitCamera(layout.bounds,width,height);
     const pointers=new Map<number,Point>();let start:Point|null=null,dragged=false,pinchDistance=0;
@@ -180,6 +192,9 @@ function FloorScene(props: FloorSceneProps) {
       const animate=!p.reducedMotion;
       if(time-last>=1000/30&&(dirty||animate)){last=time;ctx.setTransform(dpr,0,0,dpr,0,0);drawFloorScene(ctx,p,layout,camera,width,height,Date.now());dirty=false;
         canvas.dataset.stationTargets=JSON.stringify(layout.stations.map(s=>({id:s.id,...toScreen({x:s.x,y:s.y+62},camera)})));
+        if(time-lastTargets>=500||p.reducedMotion){lastTargets=time;const statuses=new Map(p.stations.map(s=>[s.id,s.status]));const stamp=Date.now();
+          canvas.dataset.agentTargets=JSON.stringify(layout.stations.flatMap(s=>{const status=statuses.get(s.id);if(!status||!avatarVisible(status))return [];const pose=traderPose(status,stamp,s.id,p.reducedMotion,s,layout);return [{id:s.id,...toScreen({x:s.x+pose.x,y:s.y+pose.y-20},camera),walking:pose.walking,activity:pose.activity}];}));
+        }
       }
       if(dirty||animate)frame=requestAnimationFrame(draw);
     };

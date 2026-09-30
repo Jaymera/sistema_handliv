@@ -56,6 +56,32 @@ test('no console errors on the floor', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test('people continuously walk and remain selectable at their current position', async ({page}) => {
+  await page.getByRole('button', {name:'Explorar demo'}).click();
+  const floor=canvas(page);
+  await expect(floor).toHaveAttribute('data-agent-targets', /walking/);
+  type Target={id:string;x:number;y:number;walking:boolean;activity:string};
+  const before:Target[]=await floor.evaluate(el=>JSON.parse((el as HTMLCanvasElement).dataset.agentTargets!));
+  await page.waitForTimeout(1700);
+  const after:Target[]=await floor.evaluate(el=>JSON.parse((el as HTMLCanvasElement).dataset.agentTargets!));
+  expect(after.some(p=>p.walking&&before.some(q=>q.id===p.id&&Math.hypot(q.x-p.x,q.y-p.y)>2))).toBeTruthy();
+  await floor.scrollIntoViewIfNeeded();
+  const targets:Target[]=await floor.evaluate(el=>JSON.parse((el as HTMLCanvasElement).dataset.agentTargets!));
+  const box=(await floor.boundingBox())!;
+  const walker=targets.find(p=>p.walking&&p.x>20&&p.x<box.width-20&&p.y>20&&p.y<box.height-20)!;
+  expect(walker).toBeTruthy();
+  await page.mouse.click(box.x+walker.x,box.y+walker.y);
+  await expect(page.getByText('Somente leitura. Nenhuma ordem pode ser enviada por esta tela.', {exact:true})).toBeVisible();
+});
+
+test('reduced motion keeps avatars at desks without a moving loop', async ({page}) => {
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await page.getByRole('button', {name:'Explorar demo'}).click();
+  await expect(canvas(page)).toHaveAttribute('data-agent-targets', /desk/);
+  const targets=await canvas(page).evaluate(el=>JSON.parse((el as HTMLCanvasElement).dataset.agentTargets!));
+  expect(targets.every((p:{walking:boolean;activity:string})=>!p.walking&&p.activity==='desk')).toBeTruthy();
+});
+
 function canvas(page: import('@playwright/test').Page) {
   return page.locator('[data-testid="floor-canvas"]');
 }

@@ -47,7 +47,7 @@ test('150 independently routed agents stay finite and all three destinations are
       assert.ok(Math.abs(desk.x + pose.x) < layout.bounds.width + Math.abs(layout.bounds.x));
     }
   }
-  assert.deepEqual([...destinations].sort(), ['coffee', 'meeting', 'pool']);
+  assert.deepEqual([...destinations].sort(), ['chat', 'coffee', 'meeting', 'pool', 'rest']);
 });
 
 test('walking agent remains selectable at its current location, offline one never becomes a target', () => {
