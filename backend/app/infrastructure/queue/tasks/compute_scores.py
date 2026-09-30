@@ -8,6 +8,7 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.domain.decision_engine import decide
+from app.domain.news_sentiment import sentiment_samples
 from app.infrastructure.cache import cache
 from app.infrastructure.database.models import (
     Asset,
@@ -70,7 +71,10 @@ def compute_all_scores() -> int:
                     .order_by(NewsArticle.published_at.desc())
                     .limit(20)
                 ).all()
-                sentiments = [float(a.sentiment_score) for a in articles if a.sentiment_score is not None]
+                from app.domain.news_relevance import matches_asset_title
+                sentiments = sentiment_samples([
+                    a for a in articles if matches_asset_title(a.title, asset.symbol, getattr(asset, "name", None))
+                ])
 
                 result = decide(df, info, last_price, sentiments, weights)
 
@@ -79,7 +83,7 @@ def compute_all_scores() -> int:
                     timeframe="1d",
                     technical_score=result.technical.value,
                     valuation_score=result.valuation.value,
-                    sentiment_score=result.sentiment.value,
+                    sentiment_score=result.sentiment.value if sentiments else None,
                     final_score=result.final_score,
                     buyer_strength=result.buyer_strength,
                     seller_strength=result.seller_strength,
@@ -88,7 +92,7 @@ def compute_all_scores() -> int:
                     horizon=result.horizon,
                     weights_json=weights,
                     inputs_log_json=result.inputs_log,
-                    calculated_at=datetime.now(timezone=True),
+                    calculated_at=datetime.now(timezone.utc),
                 )
                 db.add(score_row)
                 db.commit()

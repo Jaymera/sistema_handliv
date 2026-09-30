@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.infrastructure.database.models import MT5Account, MT5AccountStats, MT5Command, TradeRecord, User
+from app.infrastructure.database.models import MT5Account, MT5AccountStats, MT5RobotStats, MT5Command, TradeRecord, User
 from app.infrastructure.database.session import get_db
 from app.presentation.deps.auth import get_current_user
 from app.presentation.routers.subscriptions import check_user_plan
@@ -226,6 +226,8 @@ def delete_mt5_account(account_id: str, user: User = Depends(get_current_user), 
     st = db.scalar(select(MT5AccountStats).where(MT5AccountStats.account_number == acc.account_number))
     if st is not None:
         db.delete(st)
+    for robot in db.scalars(select(MT5RobotStats).where(MT5RobotStats.account_number == acc.account_number)):
+        db.delete(robot)
     db.commit()
 
 
@@ -267,6 +269,84 @@ def _stats_to_dict(s: MT5AccountStats) -> dict:
     }
 
 
+def _robot_to_dict(r: MT5RobotStats) -> dict:
+    return {
+        "magic": r.magic, "symbol": r.symbol, "open_positions": r.open_positions,
+        "floating_pl": float(r.floating_pl),
+        "profit_total": float(r.profit_total) if r.profit_total is not None else None,
+        "win_trades": r.win_trades, "loss_trades": r.loss_trades,
+        "total_trades": r.total_trades, "history_scope": r.history_scope,
+        "heartbeat": r.heartbeat,
+        "is_present": r.is_present,
+        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+    }
+
+
+def _validate_robots(robots: object) -> list[dict]:
+    """Reject the whole malformed snapshot before any account or robot write."""
+    from decimal import Decimal, InvalidOperation
+
+    if not isinstance(robots, list) or len(robots) > 256:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "robots deve ser uma lista de até 256 itens")
+    seen = set()
+    result = []
+    for item in robots:
+        if not isinstance(item, dict):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "robot inválido")
+        magic = item.get("magic")
+        if isinstance(magic, bool) or not isinstance(magic, (int, str)) or not str(magic).isdigit() or int(magic) <= 0 or int(magic) > 18446744073709551615:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "magic inválido")
+        magic = str(int(magic))
+        if magic in seen:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "magic duplicado")
+        seen.add(magic)
+        symbol = item.get("symbol")
+        if symbol is not None and (not isinstance(symbol, str) or not symbol or len(symbol) > 32):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "symbol inválido")
+        scope = item.get("history_scope")
+        if scope is not None and scope not in ("account_history", "terminal_loaded"):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "history_scope inválido")
+        heartbeat = item.get("heartbeat", False)
+        if not isinstance(heartbeat, bool):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "heartbeat inválido")
+
+        def count(key: str, required: bool = False) -> int | None:
+            value = item.get(key)
+            if value is None and not required:
+                return None
+            if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 2147483647:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{key} inválido")
+            return value
+
+        def money(key: str, required: bool = False) -> Decimal | None:
+            value = item.get(key)
+            if value is None and not required:
+                return None
+            try:
+                if isinstance(value, bool):
+                    raise ValueError()
+                amount = Decimal(str(value))
+                if not amount.is_finite() or abs(amount) > Decimal("99999999999999.99"):
+                    raise ValueError()
+                return amount.quantize(Decimal("0.01"))
+            except (ValueError, InvalidOperation, TypeError):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{key} inválido")
+
+        opened = count("open_positions", True)
+        floating = money("floating_pl", True)
+        total = count("total_trades")
+        wins = count("win_trades")
+        losses = count("loss_trades")
+        profit = money("profit_total")
+        if any(v is not None for v in (total, wins, losses, profit)):
+            if scope is None or any(v is None for v in (total, wins, losses, profit)) or total != wins + losses:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "histórico do robot inconsistente")
+        result.append(dict(magic=magic, symbol=symbol, open_positions=opened, floating_pl=floating,
+                           profit_total=profit, total_trades=total, win_trades=wins, loss_trades=losses,
+                           history_scope=scope, heartbeat=heartbeat))
+    return result
+
+
 @router.post("/mt5/ea/stats")
 def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
     """O EA HandlivPanel reporta periodicamente as estatísticas da conta (DD, P/L, win rate)."""
@@ -277,6 +357,7 @@ def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
     if not account:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "account é obrigatório")
     _require_ea_token(account, token)
+    robots = _validate_robots(payload["robots"]) if "robots" in payload else None
 
     def _num(key: str) -> Decimal:
         try:
@@ -302,6 +383,25 @@ def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
     row.loss_trades = _int("loss_trades")
     row.total_trades = _int("total_trades")
     row.open_positions = _int("open_positions")
+    if robots is not None:
+        from datetime import datetime, timezone
+
+        previous = {r.magic: r for r in db.scalars(select(MT5RobotStats).where(MT5RobotStats.account_number == account))}
+        present = {r["magic"] for r in robots}
+        now = datetime.now(timezone.utc)
+        for magic, old in previous.items():
+            if magic not in present:
+                old.is_present = False
+                old.heartbeat = False
+        for item in robots:
+            robot = previous.get(item["magic"])
+            if robot is None:
+                robot = MT5RobotStats(account_number=account, magic=item["magic"])
+                db.add(robot)
+            for key, value in item.items():
+                setattr(robot, key, value)
+            robot.is_present = True
+            robot.updated_at = now
     db.commit()
     return {"status": "ok"}
 
@@ -314,6 +414,7 @@ def my_mt5_stats(user: User = Depends(get_current_user), db: Session = Depends(g
     items = []
     for acc in accounts:
         st = db.scalar(select(MT5AccountStats).where(MT5AccountStats.account_number == acc.account_number))
+        robots = db.scalars(select(MT5RobotStats).where(MT5RobotStats.account_number == acc.account_number).order_by(MT5RobotStats.magic)).all()
         items.append(
             {
                 "id": str(acc.id),
@@ -321,6 +422,7 @@ def my_mt5_stats(user: User = Depends(get_current_user), db: Session = Depends(g
                 "broker": acc.broker,
                 "is_active": acc.is_active,
                 "stats": _stats_to_dict(st) if st is not None else None,
+                "robots": [_robot_to_dict(r) for r in robots],
             }
         )
     return {"items": items}

@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,3 +71,24 @@ class MT5AccountStats(Base, TimestampMixin):
     loss_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_trades: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     open_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class MT5RobotStats(Base, TimestampMixin):
+    """Latest reported snapshot per account and Magic Number; no synthetic online flag."""
+
+    __tablename__ = "mt5_robot_stats"
+    __table_args__ = (UniqueConstraint("account_number", "magic", name="uq_mt5_robot_account_magic"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(CHAR(36, charset="ascii"), primary_key=True, default=_uuid)
+    account_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    magic: Mapped[str] = mapped_column(String(20), nullable=False)
+    symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    open_positions: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    floating_pl: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)
+    profit_total: Mapped[Decimal | None] = mapped_column(Numeric(16, 2), nullable=True)
+    win_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    loss_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_trades: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    history_scope: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    heartbeat: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_present: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

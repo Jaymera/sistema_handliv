@@ -13,12 +13,14 @@ export default function StationDetails({ station, demo, onClose }: { station: Fl
     return () => window.removeEventListener('keydown', escape);
   }, [station, onClose]);
   if (!station) return null;
-  const value = (n: number | null) => n == null ? unknown : String(n);
+  const value = (n: number | string | null) => n == null ? unknown : String(n);
   const rows = [
-    ['Magic', value(station.magic)], ['Ativo', station.symbol ?? unknown], ['Timeframe', station.timeframe ?? unknown],
+    ['Conta', station.accountNumber ?? unknown], ['Magic', value(station.magic)], ['Ativo', station.symbol ?? unknown], ['Timeframe', station.timeframe ?? unknown],
+    ['Flutuante por Magic', money(station.floatingPl ?? null, station.currency, true)],
+    ['Lucro histórico por Magic', money(station.profitTotal ?? null, station.currency, true)],
     ['Lucro diário', money(station.profitDay, station.currency, true)], ['Lucro semanal', money(station.profitWeek, station.currency, true)],
-    ['Lucro mensal', money(station.profitMonth, station.currency, true)], ['Trades', value(station.trades)],
-    ['Vitórias', value(station.wins)], ['Derrotas', value(station.losses)],
+    ['Lucro mensal', money(station.profitMonth, station.currency, true)], [station.historyScope === 'account_history' ? 'Saídas' : 'Trades', value(station.trades)],
+    [station.historyScope === 'account_history' ? 'Saídas positivas' : 'Vitórias', value(station.wins)], [station.historyScope === 'account_history' ? 'Saídas negativas' : 'Derrotas', value(station.losses)],
     ['Drawdown', station.drawdown == null ? unknown : `${station.drawdown.toFixed(2)}%`],
     ['Posições abertas', value(station.openPositions)],
     ['Atualizado', station.updatedAt ? new Date(station.updatedAt).toLocaleString('pt-BR') : unknown],
@@ -28,14 +30,14 @@ export default function StationDetails({ station, demo, onClose }: { station: Fl
       <Pressable accessibilityRole="button" accessibilityLabel="Fechar detalhes" onPress={onClose} style={StyleSheet.absoluteFill} />
       <Card style={styles.panel} accessibilityViewIsModal>
         <View style={styles.header}>
-          <View style={{ flex: 1 }}><Text accessibilityRole="header" style={styles.title}>{station.name}</Text><Text style={styles.muted}>{demo ? 'Robô simulado • sem operações reais' : 'HandlivPanel • resultado agregado da conta'}</Text></View>
+          <View style={{ flex: 1 }}><Text accessibilityRole="header" style={styles.title}>{station.name}</Text><Text style={styles.muted}>{demo ? 'Robô simulado • sem operações reais' : 'Dados do Magic • histórico conforme disponibilidade do terminal'}</Text></View>
           <Pressable accessibilityRole="button" accessibilityLabel="Fechar detalhes" onPress={onClose} style={styles.close}><Text style={styles.title}>×</Text></Pressable>
         </View>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}><Badge text={demo ? 'DEMO' : 'REAL · CONTA'} color={demo ? C.amber : C.brand} /><Badge text={station.status} /></View>
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}><Badge text={demo ? 'DEMO' : 'REAL · MAGIC'} color={demo ? C.amber : C.brand} /><Badge text={station.status} /></View>
         <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
           {rows.map(([label, text]) => <View key={label} style={styles.row}><Text style={styles.muted}>{label}</Text><Text style={styles.value}>{text}</Text></View>)}
           <Text style={[styles.title, { marginTop: 20, fontSize: 16 }]}>Posições</Text>
-          {!station.positions.length ? <Text style={[styles.muted, { marginTop: 8 }]}>{demo ? 'Nenhuma posição aberta neste robô.' : 'Posições por robô: Não informado pelo MT5. O total acima pertence à conta, não a um Magic.'}</Text> : station.positions.map(p => <View key={p.id} style={styles.position}>
+          {!station.positions.length ? <Text style={[styles.muted, { marginTop: 8 }]}>{demo ? 'Nenhuma posição aberta neste robô.' : 'A API informa quantidade e flutuante por Magic, mas não os detalhes individuais das posições.'}</Text> : station.positions.map(p => <View key={p.id} style={styles.position}>
             <Text style={styles.title}>{p.side} · {p.symbol}</Text>
             <Text style={styles.muted}>Entrada {value(p.entry)} · Atual {value(p.current)}</Text>
             <Text style={styles.muted}>Stop {value(p.stop)} · Take {value(p.take)} · Lote {value(p.lot)}</Text>

@@ -178,13 +178,17 @@ def get_indicators(symbol: str, timeframe: str = "1d", period: str = "6mo", db: 
 
 @router.get("/assets/{symbol}/news")
 def get_news(symbol: str, page: int = 1, limit: int = 20, db: Session = Depends(get_db)) -> dict[str, Any]:
+    from app.domain.news_sentiment import article_sentiment
+    from app.domain.news_relevance import matches_asset_title
     asset = _get_asset_by_symbol(db, symbol)
     stmt = (
         select(NewsArticle)
         .where(NewsArticle.asset_id == asset.id)
         .order_by(NewsArticle.published_at.desc())
     )
-    items = list(db.scalars(stmt.offset((page - 1) * limit).limit(limit)).all())
+    matched = [n for n in db.scalars(stmt).all()
+               if matches_asset_title(n.title, asset.symbol, asset.name)]
+    items = matched[(page - 1) * limit:page * limit]
     return {
         "items": [
             {
@@ -194,7 +198,7 @@ def get_news(symbol: str, page: int = 1, limit: int = 20, db: Session = Depends(
                 "url": n.url,
                 "source": n.source,
                 "language": n.language,
-                "sentiment": {"label": n.sentiment_label.value if n.sentiment_label else None, "score": float(n.sentiment_score) if n.sentiment_score else None},
+                "sentiment": {"label": article_sentiment(n)[1], "score": article_sentiment(n)[0]},
                 "published_at": n.published_at.isoformat(),
             }
             for n in items
@@ -204,12 +208,15 @@ def get_news(symbol: str, page: int = 1, limit: int = 20, db: Session = Depends(
 
 @router.get("/assets/{symbol}/score")
 def get_score(symbol: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    from app.domain.news_sentiment import article_sentiment
+    from app.domain.news_relevance import matches_asset_title
     asset = _get_asset_by_symbol(db, symbol)
     score = db.scalar(select(Score).where(Score.asset_id == asset.id).order_by(Score.calculated_at.desc()))
     if score is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "score not computed yet")
-    articles = list(db.scalars(select(NewsArticle).where(NewsArticle.asset_id == asset.id).order_by(NewsArticle.published_at.desc()).limit(5)).all())
-    summary_full = summarize_news([{"title": a.title, "sentiment_label": a.sentiment_label.value if a.sentiment_label else None} for a in articles])
+    articles = [a for a in db.scalars(select(NewsArticle).where(NewsArticle.asset_id == asset.id).order_by(NewsArticle.published_at.desc()).limit(5)).all()
+                if matches_asset_title(a.title, asset.symbol, asset.name)]
+    summary_full = summarize_news([{"title": a.title, "sentiment_label": article_sentiment(a)[1]} for a in articles])
     explanation = explain_score(_DecisionResultAdapter(score), asset.symbol)
     indicators_explanation = explain_indicators(score.inputs_log_json.get("technical") if score.inputs_log_json else {})
     return {
@@ -234,10 +241,11 @@ def get_score(symbol: str, db: Session = Depends(get_db)) -> dict[str, Any]:
 def _visible_news_items(live_items: list[dict[str, Any]], saved_articles: list[Any]) -> list[dict[str, Any]]:
     """Show stored real articles when the live provider has no news.
 
-    This changes presentation only: sentiment calculation/weighting stays in live_analysis.
+    Scores for saved articles are derived from their real text when not stored.
     """
     if live_items:
         return live_items[:5]
+    from app.domain.news_sentiment import article_sentiment
     return [
         {
             "title": article.title,
@@ -245,8 +253,8 @@ def _visible_news_items(live_items: list[dict[str, Any]], saved_articles: list[A
             "url": article.url,
             "source": article.source,
             "published_at": article.published_at.isoformat(),
-            "sentiment_label": article.sentiment_label.value if article.sentiment_label else None,
-            "sentiment_score": float(article.sentiment_score) if article.sentiment_score is not None else None,
+            "sentiment_label": article_sentiment(article)[1],
+            "sentiment_score": article_sentiment(article)[0],
         }
         for article in saved_articles[:5]
     ]
@@ -299,14 +307,16 @@ def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_c
     # --- Decision engine ---
     from app.domain.decision_engine import decide
     from app.domain.local_ai import explain_score, explain_indicators, summarize_news
+    from app.domain.news_sentiment import analyze_news_text, article_sentiment, sentiment_samples
+    from app.domain.news_relevance import matches_asset_title
 
     # Try DB articles first, then fetch from yfinance live
-    articles = list(db.scalars(
+    articles = [a for a in db.scalars(
         select(NewsArticle).where(NewsArticle.asset_id == asset.id).order_by(NewsArticle.published_at.desc()).limit(10)
-    ).all())
+    ).all() if matches_asset_title(a.title, asset.symbol, asset.name)]
 
-    db_article_titles = [{"title": a.title, "sentiment_label": a.sentiment_label.value if a.sentiment_label else None} for a in articles]
-    db_sentiments = [float(a.sentiment_score) for a in articles if a.sentiment_score is not None]
+    db_article_titles = [{"title": a.title, "sentiment_label": article_sentiment(a)[1]} for a in articles]
+    db_sentiments = sentiment_samples(articles)
 
     # Fetch live news from yfinance
     live_news = market_data.fetch_news(asset.symbol, limit=10)
@@ -314,26 +324,10 @@ def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_c
     # Analyze sentiment of live news
     news_items_with_sentiment: list[dict[str, Any]] = []
     live_sentiments: list[float] = []
-    try:
-        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-        sia = SentimentIntensityAnalyzer()
-    except Exception:
-        sia = None
-
     for n in live_news:
-        text = (n.get("title") or "") + " " + (n.get("summary") or "")
-        label = None
-        score = None
-        if sia and text.strip():
-            compound = sia.polarity_scores(text)["compound"]
-            score = compound
-            if compound >= 0.05:
-                label = "positive"
-            elif compound <= -0.05:
-                label = "negative"
-            else:
-                label = "neutral"
-            live_sentiments.append(compound)
+        score, label = analyze_news_text(n.get("title"), n.get("summary"), n.get("language"))
+        if score is not None:
+            live_sentiments.append(score)
         news_items_with_sentiment.append({
             "title": n.get("title", ""),
             "summary": n.get("summary"),
@@ -426,7 +420,7 @@ def live_analysis(symbol: str, db: Session = Depends(get_db), user=Depends(get_c
             "subscores": {
                 "technical": result.technical.value,
                 "valuation": result.valuation.value,
-                "sentiment": result.sentiment.value,
+                "sentiment": result.sentiment.value if sentiment_scores else None,
             },
         },
         "recommendation": recommendation,
@@ -468,3 +462,4 @@ class _DecisionResultAdapter:
         self.technical = _S(score.technical_score)
         self.valuation = _S(score.valuation_score)
         self.sentiment = _S(score.sentiment_score)
+        self.sentiment.inputs = (score.inputs_log_json or {}).get("sentiment") or {}

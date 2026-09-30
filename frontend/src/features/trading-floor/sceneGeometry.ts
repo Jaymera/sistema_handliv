@@ -28,12 +28,29 @@ export function money(value: number | null, currency: string): string {
   } catch { return `${currency} ${value.toFixed(2)}`; }
 }
 export const iso = (x: number, y: number): Point => ({ x: (x - y) * .78, y: (x + y) * .39 });
+/** Decorative motion is deterministic and never changes a telemetry status. */
+export function traderPose(status: string, now: number, id: string, reducedMotion: boolean) {
+  if (status !== 'AGUARDANDO' || reducedMotion) return { x: 0, y: 0, walking: false, stride: 0 };
+  let seed = 0;
+  for (let i = 0; i < id.length; i++) seed = (seed * 31 + id.charCodeAt(i)) | 0;
+  const cycle = ((now + (Math.abs(seed) % 7000)) % 12000) / 12000;
+  // Leave the chair, walk along the aisle, pause, then return to the station.
+  if (cycle < .16 || cycle > .86) return { x: 0, y: 0, walking: false, stride: 0 };
+  const progress = cycle < .40 ? (cycle - .16) / .24 : cycle < .63 ? 1 : 1 - (cycle - .63) / .23;
+  const distance = Math.max(0, Math.min(1, progress));
+  return { x: 88 * distance, y: 56 * distance, walking: true, stride: Math.sin(now / 155) * 5 };
+}
 export function layoutScene(items: readonly { id: string }[]) {
   const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));
   const cols = Math.max(3, Math.ceil(Math.sqrt(Math.max(items.length, 10) * 1.4)));
-  const rows = Math.max(3, Math.ceil(items.length / cols));
+  const deskRows = Math.max(2, Math.ceil(items.length / cols));
+  const rows = deskRows + 2; // lounge plus circulation for the moving dog
   const stations = sorted.map((s, i) => ({ id: s.id, ...iso((i % cols + .5) * 240, (Math.floor(i / cols) + .5) * 240) }));
+  const amenities = (['pool', 'coffee', 'meeting'] as const).map((kind, i) => {
+    const gridY = (deskRows + .5) * 240;
+    return { kind, gridY, ...iso(((i + .5) * cols / 3) * 240, gridY) };
+  });
   const floor = [iso(0, 0), iso(cols * 240, 0), iso(cols * 240, rows * 240), iso(0, rows * 240)];
   const bounds = { x: floor[3].x - 70, y: -230, width: floor[1].x - floor[3].x + 140, height: floor[2].y + 330 };
-  return { stations, floor, bounds, cols, rows };
+  return { stations, amenities, floor, bounds, cols, rows, deskRows };
 }

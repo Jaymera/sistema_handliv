@@ -67,9 +67,8 @@ def fetch_all_news() -> int:
 
 
 def _match_asset(title: str, assets_by_symbol: dict[str, Asset]) -> object | None:
-    title_upper = title.upper()
+    from app.domain.news_relevance import matches_asset_title
     for symbol, asset in assets_by_symbol.items():
-        display = symbol.replace(".SA", "").upper()
-        if display and display in title_upper:
+        if matches_asset_title(title, symbol, asset.name):
             return asset.id
     return None

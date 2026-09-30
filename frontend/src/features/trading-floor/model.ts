@@ -19,7 +19,7 @@ export function accountSummary(account: FloorAccount | undefined, stations: Floo
     equity: stats?.equity ?? null, profitDay: stats?.profit_day ?? null,
     floating: stats?.floating_pl ?? null, drawdown: stats?.dd_percent ?? null,
     openPositions: stats?.open_positions ?? null,
-    online: stations.length ? stations.filter((station) => station.status !== 'OFFLINE').length : null,
+    online: stations.length ? stations.filter((station) => account?.id != null && station.accountId === account.id && station.status !== 'OFFLINE').length : null,
     equityHistory: [],
   };
 }
@@ -31,21 +31,24 @@ export function timestamp(value: string | null): number {
 }
 
 export function accountsToStations(accounts: FloorAccount[], now = Date.now()): FloorStation[] {
-  return accounts.map((account) => {
+  return accounts.flatMap((account) => {
     const stats = account.stats;
-    const age = now - timestamp(stats?.updated_at ?? null);
-    const online = account.is_active && Number.isFinite(age) && age >= -60_000 && age <= 90_000;
-    return {
-      id: account.id, name: `HandlivPanel · ${account.account_number}`,
-      scope: 'account', symbol: null, magic: null, timeframe: null,
-      currency: stats?.currency || 'USD', updatedAt: stats?.updated_at ?? null,
-      status: !online ? 'OFFLINE' : (stats?.open_positions ?? 0) > 0 ? 'POSIÇÃO ABERTA' : 'AGUARDANDO',
-      profitDay: stats?.profit_day ?? null, profitWeek: stats?.profit_week ?? null,
-      profitMonth: stats?.profit_month ?? null, trades: stats?.total_trades ?? null,
-      wins: stats?.win_trades ?? null, losses: stats?.loss_trades ?? null,
-      drawdown: stats?.dd_percent ?? null, openPositions: stats?.open_positions ?? null,
-      // An account aggregate is not a list of positions, nor a robot heartbeat.
-      positions: [],
-    };
+    return (account.robots ?? []).filter(robot => /^\d+$/.test(String(robot.magic)) && String(robot.magic) !== '0').map(robot => {
+      const age = now - timestamp(robot.updated_at ?? null);
+      const fresh = account.is_active && robot.is_present && Number.isFinite(age) && age >= -60_000 && age <= 90_000;
+      return {
+        id: `${account.id}:magic:${robot.magic}`, name: `Magic ${robot.magic}`,
+        accountId: account.id, accountNumber: account.account_number,
+        scope: 'robot' as const, symbol: robot.symbol ?? null, magic: robot.magic, timeframe: null,
+        currency: stats?.currency || 'USD', updatedAt: robot.updated_at ?? null,
+        status: (!fresh ? 'OFFLINE' : robot.open_positions > 0 ? 'POSIÇÃO ABERTA' : robot.heartbeat ? 'AGUARDANDO' : 'OFFLINE') as FloorStation['status'],
+        // The API does not report period P/L or drawdown per Magic; never borrow account totals.
+        profitDay: null, profitWeek: null, profitMonth: null,
+        profitTotal: robot.profit_total ?? null, floatingPl: robot.floating_pl ?? null,
+        trades: robot.total_trades ?? null, wins: robot.win_trades ?? null, losses: robot.loss_trades ?? null,
+        historyScope: robot.history_scope ?? null, drawdown: null,
+        openPositions: robot.open_positions ?? null, positions: [],
+      };
+    });
   });
 }

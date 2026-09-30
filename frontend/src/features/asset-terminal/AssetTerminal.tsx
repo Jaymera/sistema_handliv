@@ -145,8 +145,8 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
           {[{ label: 'TÉCNICA', value: score.subscores.technical, tint: T.cyan },
             { label: 'VALUATION', value: score.subscores.valuation, tint: T.green },
             { label: 'SENTIMENTO', value: score.subscores.sentiment, tint: T.amber }].map(item =>
-            <View key={item.label} style={styles.barRow}><View style={styles.metricRow}><Text style={styles.eyebrow}>{item.label}</Text><Text style={[styles.metricValue, { color: item.tint }]}>{item.value}</Text></View>
-              <Meter value={item.value} color={item.tint} height={6} /></View>)}
+            <View key={item.label} style={styles.barRow}><View style={styles.metricRow}><Text style={styles.eyebrow}>{item.label}</Text><Text style={[styles.metricValue, { color: item.tint }]}>{item.value == null ? 'Sem notícias' : item.value}</Text></View>
+              {item.value != null ? <Meter value={item.value} color={item.tint} height={6} /> : <Text style={styles.dim}>Nenhuma notícia com texto para medir sentimento.</Text>}</View>)}
         </Panel>
         <Panel title="INDICATOR MATRIX · VALORES REAIS" width={desktop ? half : full} accent={T.green}>
           {indicatorRows.map(row => row.value != null ? <RowMetric key={row.label} label={row.label} value={row.value.toFixed(row.digits)} note={row.note} /> : null)}
@@ -174,7 +174,7 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
               style={[styles.news, { width: desktop ? third - 12 : tablet ? half - 12 : full - 24 }]}>
               <View style={styles.metricRow}><Text style={styles.eyebrow}>{n.source}</Text>
                 <Text style={[styles.eyebrow, { color: n.sentiment_label === 'positive' ? T.green : n.sentiment_label === 'negative' ? T.red : T.amber }]}>
-                  {n.sentiment_label ?? 'NEUTRO'}</Text></View>
+                  {n.sentiment_label ?? 'NÃO ANALISADO'}</Text></View>
               <Text style={styles.newsTitle}>{n.title}</Text>
               {n.summary ? <Text style={styles.muted}>{n.summary}</Text> : null}
               <View style={styles.metricRow}><Text style={styles.dim}>{n.published_at ? new Date(n.published_at).toLocaleDateString('pt-BR') : 'Data indisponível'}</Text>

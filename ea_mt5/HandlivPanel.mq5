@@ -248,6 +248,84 @@ void CountWinLoss(int &wins, int &losses)
 //+------------------------------------------------------------------+
 //| Coleta e envia estatisticas da conta para o site                 |
 //+------------------------------------------------------------------+
+int FindRobotMagic(const ulong magic, const ulong &robotMagics[], const int count)
+{
+   for(int i = 0; i < count; i++) if(robotMagics[i] == magic) return i;
+   return -1;
+}
+
+string RobotStatsJson()
+{
+   ulong magics[256];
+   int opened[256], wins[256], losses[256], count = 0;
+   double floating[256], realized[256];
+   string symbols[256];
+   if(InpMagic > 0)
+   {
+      magics[0] = InpMagic; opened[0] = 0; wins[0] = 0; losses[0] = 0;
+      floating[0] = 0; realized[0] = 0; symbols[0] = ""; count = 1;
+   }
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i); if(ticket == 0) continue;
+      ulong magic = (ulong)PositionGetInteger(POSITION_MAGIC); if(magic == 0) continue;
+      int at = FindRobotMagic(magic, magics, count);
+      if(at < 0 && count < 256)
+      {
+         at = count++; magics[at] = magic; opened[at] = 0; wins[at] = 0;
+         losses[at] = 0; floating[at] = 0; realized[at] = 0; symbols[at] = "";
+      }
+      if(at < 0) continue;
+      opened[at]++;
+      floating[at] += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+      string symbol = PositionGetString(POSITION_SYMBOL);
+      if(symbols[at] == "") symbols[at] = symbol;
+      else if(symbols[at] != symbol) symbols[at] = "*";
+   }
+   if(HistorySelect(0, TimeCurrent() + 86400))
+   {
+      for(int j = 0; j < HistoryDealsTotal(); j++)
+      {
+         ulong ticket = HistoryDealGetTicket(j); if(ticket == 0) continue;
+         if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT) continue;
+         ulong magic = (ulong)HistoryDealGetInteger(ticket, DEAL_MAGIC); if(magic == 0) continue;
+         int at = FindRobotMagic(magic, magics, count);
+         if(at < 0 && count < 256)
+         {
+            at = count++; magics[at] = magic; opened[at] = 0; wins[at] = 0;
+            losses[at] = 0; floating[at] = 0; realized[at] = 0; symbols[at] = "";
+         }
+         if(at < 0) continue;
+         double profit = HistoryDealGetDouble(ticket, DEAL_PROFIT)
+                       + HistoryDealGetDouble(ticket, DEAL_SWAP)
+                       + HistoryDealGetDouble(ticket, DEAL_COMMISSION);
+         realized[at] += profit;
+         if(profit >= 0) wins[at]++; else losses[at]++;
+         string symbol = HistoryDealGetString(ticket, DEAL_SYMBOL);
+         if(symbols[at] == "") symbols[at] = symbol;
+         else if(symbols[at] != symbol) symbols[at] = "*";
+      }
+   }
+   string result = "[";
+   for(int k = 0; k < count; k++)
+   {
+      if(k > 0) result += ",";
+      string symbol = "null";
+      if(symbols[k] != "" && symbols[k] != "*")
+      {
+         string safe = symbols[k];
+         StringReplace(safe, "\\", "\\\\"); StringReplace(safe, "\"", "\\\"");
+         symbol = "\"" + safe + "\"";
+      }
+      result += StringFormat("{\"magic\":\"%I64u\",\"symbol\":%s,\"open_positions\":%d,"
+         "\"floating_pl\":%.2f,\"profit_total\":%.2f,\"total_trades\":%d,"
+         "\"win_trades\":%d,\"loss_trades\":%d,\"history_scope\":\"account_history\",\"heartbeat\":%s}",
+         magics[k], symbol, opened[k], floating[k], realized[k], wins[k]+losses[k],
+         wins[k], losses[k], magics[k] == InpMagic ? "true" : "false");
+   }
+   return result + "]";
+}
+
 void SendStats()
 {
    datetime now  = TimeCurrent();
@@ -277,7 +355,7 @@ void SendStats()
       "\"margin\":%.2f,\"margin_level\":%.2f,\"floating_pl\":%.2f,"
       "\"dd_percent\":%.2f,"
       "\"profit_day\":%.2f,\"profit_week\":%.2f,\"profit_month\":%.2f,\"profit_total\":%.2f,"
-      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d}",
+      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d,\"robots\":%s}",
       IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
       IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
       AccountToken(),
@@ -292,7 +370,7 @@ void SendStats()
       HistoryProfit(month0, now + 60),
       HistoryProfit(0, now + 60),
       wins, losses, wins + losses,
-      PositionsTotal());
+      PositionsTotal(), RobotStatsJson());
    string resp;
    if(HttpPost(InpApiUrl + "/mt5/ea/stats", json, resp))
       g_status = "Stats OK " + TimeToString(now, TIME_SECONDS);

@@ -20,8 +20,13 @@ export interface FloorStation {
   profitDay: number | null;
   status: FloorStatus;
   scope: "account" | "robot";
+  accountId?: string;
+  accountNumber?: string;
   updatedAt: string | null;
-  magic: number | null;
+  magic: number | string | null;
+  floatingPl?: number | null;
+  profitTotal?: number | null;
+  historyScope?: string | null;
   timeframe: string | null;
   profitWeek: number | null;
   profitMonth: number | null;
@@ -70,6 +75,20 @@ export interface FloorAccount {
   account_number: string;
   broker: string | null;
   is_active: boolean;
+  robots?: {
+    magic: string;
+    symbol: string | null;
+    open_positions: number;
+    floating_pl: number;
+    profit_total: number | null;
+    total_trades: number | null;
+    win_trades: number | null;
+    loss_trades: number | null;
+    history_scope: string | null;
+    heartbeat: boolean;
+    is_present: boolean;
+    updated_at: string | null;
+  }[];
   stats: {
     currency: string;
     balance: number;

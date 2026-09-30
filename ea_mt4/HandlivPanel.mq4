@@ -168,11 +168,11 @@ string AccountToken()
 
 //+------------------------------------------------------------------+
 //| HTTP                                                              |
-//| Assinatura real do MQL4 (confirmada pelo compilador):              |
-//|   int WebRequest(method, url, referer, headers, timeout,           |
-//|                 data, data_size, result, result_headers)          |
-//| Nao existe 'cookie' nem 'result_size'; 'result' e char& e a        |
-//| funcao redimensiona o buffer internamente.                         |
+//| Overload de headers personalizados:                               |
+//|   WebRequest(method, url, headers, timeout, data, result,          |
+//|              result_headers)                                       |
+//| O overload de 9 argumentos usa cookie e referer, NAO headers.     |
+//| Para JSON, usar 7 argumentos e ajustar o array ao tamanho exato.  |
 //+------------------------------------------------------------------+
 #define HTTP_TIMEOUT 5000
 
@@ -198,15 +198,14 @@ string HttpErrorHelp(const int code)
 bool HttpGet(const string url, string &response)
 {
    string headers  = "Content-Type: application/json\r\n";
-   string referer  = InpApiUrl + "/";
    string resultHeaders = "";
    char   post[], result[];
    int    code;
 
    ResetLastError();
    ArrayResize(post, 0);                // GET sem corpo
-   code = WebRequest("GET", url, referer, headers, HTTP_TIMEOUT,
-                     post, 0, result, resultHeaders);
+   code = WebRequest("GET", url, headers, HTTP_TIMEOUT,
+                     post, result, resultHeaders);
    if(code == -1)
    {
       int err = GetLastError();
@@ -228,22 +227,34 @@ bool HttpGet(const string url, string &response)
 bool HttpPost(const string url, const string json, string &response)
 {
    string headers  = "Content-Type: application/json\r\n";
-   string referer  = InpApiUrl + "/";
    string resultHeaders = "";
    char   post[], result[];
    int    code, size;
 
    ResetLastError();
    size = StringToCharArray(json, post, 0, StringLen(json), CP_UTF8);
-   code = WebRequest("POST", url, referer, headers, HTTP_TIMEOUT,
-                     post, size, result, resultHeaders);
+   // Alguns builds incluem o terminador NUL no retorno; JSON com byte extra
+   // e rejeitado pelo parser da API antes de validar o token.
+   if(size > 0 && post[size - 1] == 0) size--;
+   // O overload com headers envia ArraySize(post) bytes (nao aceita data_size).
+   ArrayResize(post, size);
+   code = WebRequest("POST", url, headers, HTTP_TIMEOUT,
+                     post, result, resultHeaders);
+   response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
    if(code == -1 || code >= 400)
    {
       int err = (code == -1) ? GetLastError() : 0;
-      Print("HandlivPanel POST falhou HTTP ", code, " erro ", err, " url=", url);
+      // FastAPI 422 retorna detail[].type/msg. Nao imprimir response inteiro:
+      // erros de validacao podem conter o corpo original com token.
+      string kind = JsonGetString(response, "type");
+      string reason = JsonGetString(response, "msg");
+      g_status = "POST HTTP " + IntegerToString(code) +
+                 (code == -1 ? HttpErrorHelp(err) :
+                 (kind != "" ? " | " + kind : "") +
+                 (reason != "" ? " | " + StringSubstr(reason, 0, 90) : ""));
+      Print("HandlivPanel POST falhou: ", g_status, " endpoint=", url);
       return false;
    }
-   response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
    return true;
 }
 
@@ -350,6 +361,7 @@ bool ExecuteBuy(const string symbol, double volume)
    double ask, lot;
    int    ticket;
    RefreshRates();
+   SymbolSelect(symbol, true);
    ask = MarketInfo(symbol, MODE_ASK);
    if(ask <= 0)
    {
@@ -358,7 +370,7 @@ bool ExecuteBuy(const string symbol, double volume)
    }
    lot = NormalizeVolume(symbol, volume);
    ResetLastError();
-   ticket = OrderSend(Symbol(), OP_BUY, lot, ask, InpSlippage, 0, 0,
+   ticket = OrderSend(symbol, OP_BUY, lot, ask, InpSlippage, 0, 0,
                       "HandlivPanel", InpMagic, 0, clrGreen);
    g_lastError = GetLastError();
    if(ticket < 0)
@@ -375,6 +387,7 @@ bool ExecuteSell(const string symbol, double volume)
    double bid, lot;
    int    ticket;
    RefreshRates();
+   SymbolSelect(symbol, true);
    bid = MarketInfo(symbol, MODE_BID);
    if(bid <= 0)
    {
@@ -383,7 +396,7 @@ bool ExecuteSell(const string symbol, double volume)
    }
    lot = NormalizeVolume(symbol, volume);
    ResetLastError();
-   ticket = OrderSend(Symbol(), OP_SELL, lot, bid, InpSlippage, 0, 0,
+   ticket = OrderSend(symbol, OP_SELL, lot, bid, InpSlippage, 0, 0,
                       "HandlivPanel", InpMagic, 0, clrRed);
    g_lastError = GetLastError();
    if(ticket < 0)
@@ -465,6 +478,7 @@ double HistoryProfit(const datetime from, const datetime to)
    for(int i = 0; i < n; i++)
    {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY)) continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
       datetime closed = OrderCloseTime();
       if(closed < from || closed >= to) continue;
       total += OrderProfit() + OrderCommission() + OrderSwap();
@@ -472,16 +486,102 @@ double HistoryProfit(const datetime from, const datetime to)
    return total;
 }
 
-void CountWinLoss(int &wins, int &losses)
+void CountWinLoss(int &countWins, int &countLosses)
 {
-   wins = 0; losses = 0;
+   countWins = 0; countLosses = 0;
    int n = OrdersHistoryTotal();
    for(int i = 0; i < n; i++)
    {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_HISTORY)) continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
       double p = OrderProfit() + OrderCommission() + OrderSwap();
-      if(p >= 0) wins++; else losses++;
+      if(p >= 0) countWins++; else countLosses++;
    }
+}
+
+int OpenPositionsCount()
+{
+   int count = 0;
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+      if(OrderType() == OP_BUY || OrderType() == OP_SELL) count++;
+   }
+   return count;
+}
+
+// Magic 0 is manual trading. History is limited to what this terminal has loaded.
+// Global buffers avoid MT4's false uninitialized-index warnings on local arrays.
+int magics[256], opened[256], wins[256], losses[256];
+double floating[256], realized[256];
+string symbols[256];
+int FindRobotMagic(const int magic, const int &lookupMagics[], const int count)
+{
+   for(int i = 0; i < count; i++) if(lookupMagics[i] == magic) return i;
+   return -1;
+}
+
+string RobotStatsJson()
+{
+   int count = 0;
+   if(InpMagic > 0)
+   {
+      magics[0] = InpMagic; opened[0] = 0; wins[0] = 0; losses[0] = 0;
+      floating[0] = 0; realized[0] = 0; symbols[0] = ""; count = 1;
+   }
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+      int magic = OrderMagicNumber(); if(magic <= 0) continue;
+      int at = FindRobotMagic(magic, magics, count);
+      if(at < 0 && count < 256)
+      {
+         at = count++; magics[at] = magic; opened[at] = 0; wins[at] = 0;
+         losses[at] = 0; floating[at] = 0; realized[at] = 0; symbols[at] = "";
+      }
+      if(at < 0) continue;
+      opened[at]++;
+      floating[at] += OrderProfit() + OrderCommission() + OrderSwap();
+      if(symbols[at] == "") symbols[at] = OrderSymbol();
+      else if(symbols[at] != OrderSymbol()) symbols[at] = "*";
+   }
+   for(int j = 0; j < OrdersHistoryTotal(); j++)
+   {
+      if(!OrderSelect(j, SELECT_BY_POS, MODE_HISTORY)) continue;
+      if(OrderType() != OP_BUY && OrderType() != OP_SELL) continue;
+      int magic = OrderMagicNumber(); if(magic <= 0) continue;
+      int at = FindRobotMagic(magic, magics, count);
+      if(at < 0 && count < 256)
+      {
+         at = count++; magics[at] = magic; opened[at] = 0; wins[at] = 0;
+         losses[at] = 0; floating[at] = 0; realized[at] = 0; symbols[at] = "";
+      }
+      if(at < 0) continue;
+      double profit = OrderProfit() + OrderCommission() + OrderSwap();
+      realized[at] += profit;
+      if(profit >= 0) wins[at]++; else losses[at]++;
+      if(symbols[at] == "") symbols[at] = OrderSymbol();
+      else if(symbols[at] != OrderSymbol()) symbols[at] = "*";
+   }
+   string result = "[";
+   for(int k = 0; k < count; k++)
+   {
+      if(k > 0) result += ",";
+      string symbol = "null";
+      if(symbols[k] != "" && symbols[k] != "*")
+      {
+         string safe = symbols[k];
+         StringReplace(safe, "\\", "\\\\"); StringReplace(safe, "\"", "\\\"");
+         symbol = "\"" + safe + "\"";
+      }
+      result += StringFormat("{\"magic\":\"%d\",\"symbol\":%s,\"open_positions\":%d,"
+         "\"floating_pl\":%.2f,\"profit_total\":%.2f,\"total_trades\":%d,"
+         "\"win_trades\":%d,\"loss_trades\":%d,\"history_scope\":\"terminal_loaded\",\"heartbeat\":%s}",
+         magics[k], symbol, opened[k], floating[k], realized[k], wins[k]+losses[k],
+         wins[k], losses[k], magics[k] == InpMagic ? "true" : "false");
+   }
+   return result + "]";
 }
 
 //+------------------------------------------------------------------+
@@ -497,7 +597,7 @@ void SendStats()
    double equity  = AccountEquity();
    double balance = AccountBalance();
    double margin  = AccountMargin();
-   double floating = AccountProfit();
+   double accountFloating = AccountProfit();
    double mlevel  = (margin > 0) ? equity / margin * 100.0 : 0.0;
 
    // Drawdown: acompanha o pico de equity desde o inicio do EA
@@ -505,8 +605,8 @@ void SendStats()
    double dd = 0.0;
    if(g_peakEquity > 0) dd = (g_peakEquity - equity) / g_peakEquity * 100.0;
 
-   int wins = 0, losses = 0;
-   CountWinLoss(wins, losses);
+   int accountWins = 0, accountLosses = 0;
+   CountWinLoss(accountWins, accountLosses);
 
    string json = StringFormat(
       "{\"account\":\"%s\",\"login\":\"%s\",\"token\":\"%s\","
@@ -515,20 +615,20 @@ void SendStats()
       "\"margin\":%.2f,\"margin_level\":%.2f,\"floating_pl\":%.2f,"
       "\"dd_percent\":%.2f,"
       "\"profit_day\":%.2f,\"profit_week\":%.2f,\"profit_month\":%.2f,\"profit_total\":%.2f,"
-      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d}",
+      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d,\"robots\":%s}",
       IntegerToString(AccountNumber()),
       IntegerToString(AccountNumber()),
       AccountToken(),
       AccountCurrency(),
       equity, balance,
-      margin, mlevel, floating,
+      margin, mlevel, accountFloating,
       dd,
       HistoryProfit(day0, now + 60),
       HistoryProfit(week0, now + 60),
       HistoryProfit(month0, now + 60),
       HistoryProfit(0, now + 60),
-      wins, losses, wins + losses,
-      OrdersTotal());
+      accountWins, accountLosses, accountWins + accountLosses,
+      OpenPositionsCount(), RobotStatsJson());
    string resp;
    if(HttpPost(InpApiUrl + "/mt5/ea/stats", json, resp))
       g_status = "Stats OK " + TimeToStr(now, TIME_SECONDS);
@@ -546,6 +646,7 @@ void PollCommands()
    int    pos, start, end;
 
    if(!HttpGet(url, resp)) { g_apiOk = false; UpdatePanel(); return; }
+   if(!g_apiOk || g_status == "Conectando...") g_status = "Conectado";
    g_apiOk = true;
 
    // Percorre cada objeto do array "items" (mesmo parser do MT5)
@@ -567,6 +668,7 @@ void PollCommands()
 
       // symbol vazio -> ativo do painel
       if(symbol == "") symbol = g_symbol;
+      else SymbolSelect(symbol, true);
 
       Print("HandlivPanel: comando do site -> ", action, " ", symbol, " ", volume);
 
@@ -693,6 +795,7 @@ int OnInit()
       return INIT_PARAMETERS_INCORRECT;
    }
    g_symbol = (InpSymbol == "" ? Symbol() : InpSymbol);
+   SymbolSelect(g_symbol, true);
    RefreshRates();
    g_peakEquity = MathMax(AccountEquity(), AccountBalance());
 
@@ -700,9 +803,8 @@ int OnInit()
    EventSetTimer(MathMax(1, InpPollSeconds));
    Print("HandlivPanel MT4 iniciado. Conta=", AccountNumber(), " API=", InpApiUrl);
 
-   // Primeira conexao imediata: sem isso o painel fica em "Conectando..."
-   // ate o primeiro tique do timer (e o timer so roda se Allow WebRequest
-   // estiver liberado, entao damos o erro logo).
+   // Verifica a conexao logo ao iniciar e exibe o resultado antes do timer.
+   // O timer continua ativo mesmo quando WebRequest falha.
    PollCommands();
    SendStats();
    UpdatePanel();
@@ -725,7 +827,7 @@ void OnTick()
 
 void OnTimer()
 {
-   datetime now = TimeCurrent();
+   datetime now = TimeLocal(); // TimeCurrent pode congelar sem ticks; polling HTTP nao deve parar
    if(now - g_lastPoll >= MathMax(1, InpPollSeconds))
    {
       g_lastPoll = now;

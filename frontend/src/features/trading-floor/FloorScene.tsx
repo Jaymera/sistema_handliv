@@ -1,12 +1,14 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import { PanResponder, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Polygon, Rect, Text } from 'react-native-svg';
 import type { FloorSceneProps, FloorStation } from './types';
-import { Camera, fitCamera, hitStation, iso, layoutScene, money, zoomCamera } from './sceneGeometry';
+import { Camera, fitCamera, hitStation, iso, layoutScene, money, traderPose, zoomCamera } from './sceneGeometry';
 
 const INK='#E9EFF9', MUTED='#8498B7', GREEN='#16D39A';
-const Station = memo(function Station({station:s,x,y,selected}:{station:FloorStation;x:number;y:number;selected:boolean}) {
+const Station = memo(function Station({station:s,x,y,selected,now,reducedMotion,demo}:{station:FloorStation;x:number;y:number;selected:boolean;now:number;reducedMotion:boolean;demo:boolean}) {
   const color=s.status==='OFFLINE'?'#66758C':s.status==='POSIÇÃO ABERTA'?'#4C8DFF':s.status==='OPERANDO'?GREEN:'#E6B866';
+  const pose=traderPose(s.status,now,s.id,reducedMotion);
   return <G transform={`translate(${x} ${y})`}>
     {(selected||s.status==='POSIÇÃO ABERTA')&&<Polygon points="0,-56 102,-5 0,46 -102,-5" fill={color} opacity={selected?.8:.25} />}
     <Ellipse cx={0} cy={18} rx={91} ry={31} fill="#080F1D" />
@@ -20,15 +22,22 @@ const Station = memo(function Station({station:s,x,y,selected}:{station:FloorSta
       {[0,1,2].map(j=><Rect key={j} x={7} y={14+j*4} width={18-j*4} height={1} fill="#48768D" />)}
     </G>)}
     <Polygon points="-27,-21 -5,-29 13,-20 -10,-12" fill="#8392A6" />
-    <Line x1={-10} y1={9} x2={-16} y2={26} stroke="#27344B" strokeWidth={8}/><Line x1={7} y1={9} x2={13} y2={29} stroke="#27344B" strokeWidth={8}/>
-    <Rect x={-24} y={-14} width={47} height={30} rx={10} fill="#0A1426" /><Line x1={0} y1={12} x2={0} y2={33} stroke="#63718A" strokeWidth={4}/><Line x1={-20} y1={34} x2={20} y2={34} stroke="#63718A" strokeWidth={3}/>
+    <G transform={`translate(${pose.x} ${pose.y})`}>
+    {pose.walking?<>
+      <Line x1={-9} y1={3} x2={-10+pose.stride} y2={29} stroke="#27344B" strokeWidth={8}/><Line x1={8} y1={3} x2={10-pose.stride} y2={29} stroke="#27344B" strokeWidth={8}/>
+      <Rect x={-19} y={28} width={12} height={6} fill="#060B14"/><Rect x={8} y={28} width={12} height={6} fill="#060B14"/>
+    </>:<>
+      <Line x1={-10} y1={9} x2={-16} y2={26} stroke="#27344B" strokeWidth={8}/><Line x1={7} y1={9} x2={13} y2={29} stroke="#27344B" strokeWidth={8}/>
+      <Rect x={-24} y={-14} width={47} height={30} rx={10} fill="#0A1426" /><Line x1={0} y1={12} x2={0} y2={33} stroke="#63718A" strokeWidth={4}/><Line x1={-20} y1={34} x2={20} y2={34} stroke="#63718A" strokeWidth={3}/>
+    </>}
     <Rect x={-16} y={-30} width={31} height={40} rx={10} fill="#536D98" />
     <Line x1={-12} y1={-23} x2={-27} y2={-18} stroke="#7893B8" strokeWidth={7}/><Line x1={12} y1={-22} x2={23} y2={-28} stroke="#7893B8" strokeWidth={7}/>
     <Ellipse cx={-1} cy={-39} rx={12} ry={14} fill="#D2A183"/><Ellipse cx={-2} cy={-45} rx={12} ry={8} fill="#252332"/>
+    </G>
     <Rect x={-90} y={40} width={180} height={65} rx={7} fill="#0B1527"/><Rect x={-90} y={40} width={3} height={65} fill={color}/>
     <Text x={-80} y={57} fill={INK} fontSize={12} fontWeight="700">{s.name.length>23?s.name.slice(0,22)+'…':s.name}</Text>
     <Text x={-80} y={72} fill={MUTED} fontSize={10}>{s.symbol??'—'}</Text>
-    <Text x={81} y={73} textAnchor="end" fill={(s.profitDay??0)<0?'#FF7289':GREEN} fontSize={11}>{money(s.profitDay,s.currency)}</Text>
+    <Text x={81} y={73} textAnchor="end" fill={((demo?s.profitDay:s.floatingPl)??0)<0?'#FF7289':GREEN} fontSize={11}>{money(demo?s.profitDay:s.floatingPl??null,s.currency)}</Text>
     <Text x={-80} y={94} fill={color} fontSize={9}>{s.status}</Text>
     {s.status==='POSIÇÃO ABERTA'&&<Circle cx={77} cy={90} r={3} fill={color}/>}
   </G>;
@@ -36,6 +45,9 @@ const Station = memo(function Station({station:s,x,y,selected}:{station:FloorSta
 
 function FloorScene(props:FloorSceneProps) {
   const [size,setSize]=useState({width:1,height:1});
+  const [now,setNow]=useState(Date.now());
+  const focused=useIsFocused();
+  useEffect(()=>{if(props.reducedMotion||!focused)return;const timer=setInterval(()=>setNow(Date.now()),200);return()=>clearInterval(timer);},[props.reducedMotion,focused]);
   const layout=useMemo(()=>layoutScene(props.stations),[props.stations]);
   const signature=layout.stations.map(s=>s.id).join('\0');
   const [camera,setCamera]=useState<Camera>({x:0,y:0,scale:1});
@@ -75,7 +87,17 @@ function FloorScene(props:FloorSceneProps) {
         <Text x={-220} y={-133} fill={MUTED} fontSize={10}>RESULTADO HOJE</Text><Text x={-220} y={-104} fill={(props.summary.profitDay??0)<0?'#FF7289':GREEN} fontSize={26} fontWeight="700">{money(props.summary.profitDay,props.summary.currency)}</Text>
         <Text x={35} y={-135} fill={MUTED} fontSize={9}>SALDO</Text><Text x={35} y={-117} fill={INK} fontSize={14}>{money(props.summary.balance,props.summary.currency)}</Text>
         <Text x={35} y={-92} fill={MUTED} fontSize={9}>PATRIMÔNIO</Text><Text x={35} y={-73} fill={INK} fontSize={14}>{money(props.summary.equity,props.summary.currency)}</Text>
-        {layout.stations.filter(p=>{const x=p.x*camera.scale+camera.x,y=p.y*camera.scale+camera.y;return x+110*camera.scale>=0&&x-110*camera.scale<=size.width&&y+110*camera.scale>=0&&y-125*camera.scale<=size.height;}).map(p=><Station key={p.id} station={byId.get(p.id)!} x={p.x} y={p.y} selected={props.selectedId===p.id}/>)}
+        {layout.stations.filter(p=>{const x=p.x*camera.scale+camera.x,y=p.y*camera.scale+camera.y;return x+190*camera.scale>=0&&x-110*camera.scale<=size.width&&y+160*camera.scale>=0&&y-125*camera.scale<=size.height;}).map(p=><Station key={p.id} station={byId.get(p.id)!} x={p.x} y={p.y} selected={props.selectedId===p.id} now={now} reducedMotion={props.reducedMotion} demo={props.demo}/>)}
+        {layout.amenities.map(a=><G key={a.kind} transform={`translate(${a.x} ${a.y})`}>
+          <Ellipse cx={0} cy={22} rx={94} ry={41} fill="#0B1728"/>
+          {a.kind==='pool'?<><Rect x={-80} y={-35} width={160} height={77} rx={9} fill="#603C2F"/><Rect x={-73} y={-30} width={146} height={61} rx={6} fill="#0D634B" stroke="#E8E1CE" strokeWidth={3}/>
+            {[-40,10,32].map((x,i)=><Circle key={i} cx={x} cy={i%2?5:0} r={4} fill={i===0?'#EFEADB':i===1?'#F2B74D':'#4C8DFF'}/>)}<Text x={-34} y={58} fill={MUTED} fontSize={10}>SINUCA</Text></>
+          :a.kind==='coffee'?<><Rect x={-65} y={-23} width={130} height={53} rx={12} fill="#B28764"/>{[-28,0,28].map(x=><Circle key={x} cx={x} cy={0} r={8} fill="#F2EEE1"/>)}<Text x={-20} y={53} fill={MUTED} fontSize={10}>CAFÉ</Text></>
+          :<><Rect x={-83} y={-27} width={166} height={64} rx={23} fill="#576E83"/>{[-56,-18,20,58].map(x=><G key={x}><Rect x={x} y={-44} width={19} height={12} rx={5} fill="#243D56"/><Rect x={x} y={39} width={19} height={12} rx={5} fill="#243D56"/></G>)}<Text x={-29} y={60} fill={MUTED} fontSize={10}>REUNIÃO</Text></>}
+        </G>)}
+        {(()=>{const left=layout.amenities[0],right=layout.amenities[2],phase=props.reducedMotion?.5:(now%18000)/18000,step=phase<.5?phase*2:2-phase*2;
+          const dir=phase<.5?1:-1,stride=props.reducedMotion?0:Math.sin(now/175)*4;
+          return <G transform={`translate(${left.x+(right.x-left.x)*step} ${left.y+(right.y-left.y)*step+85})`}><Ellipse cx={0} cy={0} rx={16} ry={9} fill="#A87852"/><Circle cx={dir*15} cy={-8} r={8} fill="#A87852"/><Polygon points={`${dir*10},-13 ${dir*7},-24 ${dir*17},-15`} fill="#79543C"/><Circle cx={dir*19} cy={-10} r={2} fill="#101725"/><Circle cx={dir*23} cy={-5} r={2} fill="#101725"/><Line x1={-10} y1={6} x2={-10+stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={10} y1={6} x2={10-stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={-dir*14} y1={-2} x2={-dir*23} y2={-15+(props.reducedMotion?0:Math.sin(now/220)*3)} stroke="#A87852" strokeWidth={4}/></G>;})()}
       </G>
     </Svg>
   </View>;

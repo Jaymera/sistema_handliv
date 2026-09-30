@@ -9,10 +9,12 @@ def explain_score(result: DecisionResult, asset_symbol: str) -> str:
     """Deterministic PT-BR explanation of the decision engine output.
     No LLM/token needed. Pure rule-based text composition."""
     parts: list[str] = []
+    has_sentiment = "sample" in result.sentiment.inputs
+    sentiment_text = str(result.sentiment.value) if has_sentiment else "indisponível (sem notícias analisáveis)"
     parts.append(
         f"Score composto do ativo {asset_symbol}: {result.final_score}/100 "
         f"(técnica {result.technical.value}, valuation {result.valuation.value}, "
-        f"sentimento {result.sentiment.value})."
+        f"sentimento {sentiment_text})."
     )
 
     if result.final_score >= 70:
@@ -59,10 +61,11 @@ def summarize_news(articles: list[dict[str, Any]]) -> str:
         return "Sem notícias recentes para este ativo."
     pos = sum(1 for a in articles if a.get("sentiment_label") == "positive")
     neg = sum(1 for a in articles if a.get("sentiment_label") == "negative")
-    neut = len(articles) - pos - neg
+    neut = sum(1 for a in articles if a.get("sentiment_label") == "neutral")
+    unclassified = len(articles) - pos - neg - neut
     titles_preview = "; ".join(a.get("title", "")[:90] for a in articles[:3])
     summary = (
-        f"{len(articles)} notícias recentes: {pos} positivas, {neg} negativas, {neut} neutras. "
+        f"{len(articles)} notícias recentes: {pos} positivas, {neg} negativas, {neut} neutras, {unclassified} sem classificação. "
         f"Destaques: {titles_preview}."
     )
     return summary

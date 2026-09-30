@@ -27,3 +27,7 @@ test('every field returned by current live analysis remains represented', () => 
 test('no fake timeframes, support/resistance or synthetic market flow', () => {
   assert.doesNotMatch(panel + visual, /\b(S1|S2|R1|R2|order flow|market flow|M5|M15|H4|D1)\b/i);
 });
+test('missing sentiment is labeled instead of rendered as a numeric meter', () => {
+  assert.match(panel, /item\.value == null \? 'Sem notícias' : item\.value/);
+  assert.match(panel, /item\.value != null \? <Meter/);
+});

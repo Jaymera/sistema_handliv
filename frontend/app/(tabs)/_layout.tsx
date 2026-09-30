@@ -49,13 +49,6 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="trading-floor"
-          options={{
-            title: "Floor",
-            tabBarIcon: ({ color }) => <TabBarIcon name="grid" color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="trades"
           options={{
             title: "Trades",

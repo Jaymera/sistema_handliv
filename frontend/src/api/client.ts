@@ -114,7 +114,7 @@ export const assetsApi = {
         confidence: number;
         trend: string;
         horizon: string;
-        subscores: { technical: number; valuation: number; sentiment: number };
+        subscores: { technical: number; valuation: number; sentiment: number | null };
       };
       recommendation: string;
       recommendation_color: string;

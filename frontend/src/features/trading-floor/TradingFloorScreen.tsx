@@ -41,18 +41,18 @@ export default function TradingFloorScreen() {
     ['Lucro diário', money(summary.profitDay, summary.currency, true)], ['Flutuante', money(summary.floating, summary.currency, true)],
     ['Drawdown', summary.drawdown == null ? '—' : `${summary.drawdown.toFixed(2)}%`],
     ['Posições abertas', summary.openPositions == null ? '—' : String(summary.openPositions)],
-    [floor.demo ? 'Robôs online' : 'Estações online', summary.online == null ? '—' : String(summary.online)],
+    ['Magics ativos', summary.online == null ? '—' : String(summary.online)],
   ];
   const scene = (large: boolean) => <View style={[styles.sceneShell, large ? { flex: 1 } : { height: mobile ? 480 : 550 }]}>
     <View style={styles.toolbar}>
-      <View style={{ flex: 1, minWidth: 130 }}><Text style={styles.eyebrow}>LIVE OPERATIONS</Text><Text style={styles.sceneTitle}>{floor.demo ? 'Pregão simulado' : 'Suas estações MT5'}</Text></View>
+      <View style={{ flex: 1, minWidth: 130 }}><Text style={styles.eyebrow}>LIVE OPERATIONS</Text><Text style={styles.sceneTitle}>{floor.demo ? 'Pregão simulado' : 'Mesas por Magic Number'}</Text></View>
       <Button label="−" onPress={() => send('out')} /><Button label="+" onPress={() => send('in')} />
       <Button label="Fit Screen" onPress={() => send('fit')} />
       <Button label={large ? 'Fechar tela cheia' : 'Tela cheia'} onPress={() => { setExpanded(!large); send('fit'); }} />
     </View>
     <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
       <FloorScene stations={floor.stations} summary={summary} events={floor.events} selectedId={selectedId} onSelect={setSelectedId} command={command} reducedMotion={reducedMotion} demo={floor.demo} />
-      {!floor.stations.length && <View pointerEvents="none" style={styles.emptyScene}><Text style={styles.sceneTitle}>Aguardando estações</Text><Text style={[styles.caption, { textAlign: 'center', maxWidth: 320 }]}>Conecte uma conta MT5 ou ative a demonstração para conhecer o Trading Floor.</Text></View>}
+      {!floor.stations.length && <View pointerEvents="none" style={styles.emptyScene}><Text style={styles.sceneTitle}>Aguardando Magics</Text><Text style={[styles.caption, { textAlign: 'center', maxWidth: 320 }]}>{floor.accounts.length ? 'A conta está cadastrada, mas ainda não enviou telemetria por Magic. Atualize o EA para mostrar mesas reais.' : 'Conecte uma conta MT4/MT5 ou ative a demonstração para conhecer o Trading Floor.'}</Text></View>}
     </View>
     <View style={styles.sceneFooter}><Text style={styles.caption}>{floor.stations.length} estações · selecione uma mesa para detalhes</Text><Badge text={floor.demo ? 'DEMO' : 'REAL'} color={floor.demo ? C.amber : C.brand} /></View>
   </View>;
@@ -66,21 +66,22 @@ export default function TradingFloorScreen() {
         <Button label="Dados reais" selected={!floor.demo} onPress={() => floor.setRequestedDemo(false)} />
         <Button label="Explorar demo" selected={floor.demo} disabled={floor.accounts.length > 0} onPress={() => floor.setRequestedDemo(true)} />
         {floor.accounts.length > 0 && <Text style={styles.caption}>Contas reais têm prioridade sobre a demo.</Text>}
-        {floor.demo && <View style={styles.modeRow}>{[10, 20, 50, 100, 150].map(count => <Button key={count} label={`${count} robôs`} selected={floor.count === count} onPress={() => { floor.setCount(count); send('fit'); }} />)}</View>}
+        {floor.demo && <View style={[styles.modeRow, { width: '100%' }]}>{[10, 20, 50, 100, 150].map(count => <Button key={count} label={`${count} robôs`} selected={floor.count === count} onPress={() => { floor.setCount(count); send('fit'); }} />)}</View>}
       </View>
-      <Card style={styles.notice}><Text style={{ color: floor.demo ? C.amber : C.soft, fontSize: 12, lineHeight: 19 }}>{floor.demo ? 'DEMONSTRAÇÃO — robôs, posições e resultados fictícios. Não representa sua conta nem desempenho prometido.' : 'MT5 envia dados por conta; Magic/ativo e posições por robô ainda não disponíveis. Cada estação representa uma conta HandlivPanel, não um robô individual.'}</Text></Card>
+      <Card style={styles.notice}><Text style={{ color: floor.demo ? C.amber : C.soft, fontSize: 12, lineHeight: 19 }}>{floor.demo ? 'DEMONSTRAÇÃO — robôs, posições e resultados fictícios. Não representa sua conta nem desempenho prometido.' : 'Uma mesa por Magic enviado pelo EA. Saldo e resultados diários no topo são da conta selecionada; valores por Magic aparecem nos detalhes quando disponíveis. Magic sem heartbeat não é mostrado como robô online.'}</Text></Card>
       {!floor.demo && !floor.user && <Card style={styles.notice}><Text style={styles.body}>Entre para consultar suas contas reais. A demonstração é opcional e independente.</Text><Button label="Entrar" onPress={() => router.push('/auth/login')} /></Card>}
       {!floor.demo && floor.user && !floor.allowed && !floor.features.isLoading && <Card style={styles.notice}><Text style={styles.body}>{floor.features.isError ? 'Não foi possível verificar seu acesso. Nenhum dado simulado substituiu os dados reais.' : 'O painel MT5 precisa estar incluído no seu plano para visualizar contas reais.'}</Text><Button label={floor.features.isError ? 'Tentar novamente' : 'Ver planos'} onPress={() => { if (floor.features.isError) void floor.features.refetch(); else router.push('/pricing'); }} /></Card>}
       {!floor.demo && floor.allowed && floor.stats.isError && <Card style={styles.notice}><Text style={{ color: C.amber, fontSize: 13 }}>Falha ao atualizar o MT5. {floor.accounts.length ? 'Exibindo o último snapshot recebido; verifique o horário de cada conta.' : 'Nenhum dado real disponível. Não substituímos falhas por simulação.'}</Text><Button label="Tentar novamente" onPress={() => { void floor.stats.refetch(); }} /></Card>}
       {!floor.demo && (floor.features.isLoading || floor.stats.isLoading) && <Text style={styles.caption}>Consultando acesso e dados MT5…</Text>}
       {!floor.demo && floor.allowed && floor.stats.isSuccess && !floor.accounts.length && <Text style={styles.caption}>Nenhuma conta cadastrada. Cadastre sua conta na área MT5/Robô ou explore a demo.</Text>}
       {!floor.demo && floor.accounts.length > 0 && <View style={{ gap: 8 }}><Text style={styles.caption}>Indicadores da conta selecionada · não somamos moedas ou percentuais</Text><ScrollView horizontal showsHorizontalScrollIndicator>{floor.accounts.map(a => <View key={a.id} style={{ marginRight: 8 }}><Button label={`Conta ${a.account_number}`} selected={a.id === floor.selectedAccount?.id} onPress={() => floor.setAccountId(a.id)} /></View>)}</ScrollView></View>}
+      {mobile && !expanded && scene(false)}
       <View style={styles.metrics}>{metrics.map(([label, value]) => <Card key={label} style={[styles.metric, { minWidth: mobile ? 130 : 140 }]}><Text style={styles.caption}>{label}</Text><Text style={[styles.metricValue, label === 'Lucro diário' && { color: summary.profitDay == null ? C.ink : summary.profitDay < 0 ? C.down : C.up }]}>{value}</Text></Card>)}</View>
       {!summary.equityHistory.length && <Text style={styles.caption}>Histórico de equity não disponível — sem curva estimada.</Text>}
-      {!expanded && scene(false)}
+      {!mobile && !expanded && scene(false)}
       <View style={styles.legend}>{(Object.keys(statusColors) as FloorStatus[]).map(status => <View key={status} style={styles.legendItem}><View style={[styles.dot, { backgroundColor: statusColors[status] }]} /><Text style={styles.caption}>{status} · {floor.stations.filter(s => s.status === status).length}</Text></View>)}</View>
       <View style={styles.heading}><Text accessibilityRole="header" style={styles.sceneTitle}>Estações / acesso rápido</Text><Text style={styles.caption}>Visão somente leitura</Text></View>
-      <FlatList horizontal data={floor.stations} keyExtractor={item => item.id} initialNumToRender={8} windowSize={3} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 10, paddingBottom: 10 }} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Detalhes de ${item.name}, ${item.status}`} onPress={() => setSelectedId(item.id)} style={styles.station}><Text style={styles.stationName}>{item.name}</Text><Text style={{ color: statusColors[item.status], fontSize: 11 }}>{item.status}</Text><Text style={styles.body}>{money(item.profitDay, item.currency, true)}</Text><Text style={styles.caption}>{item.symbol ?? 'Ativo não informado'}</Text></Pressable>} />
+      <FlatList horizontal data={floor.stations} keyExtractor={item => item.id} initialNumToRender={8} windowSize={3} style={{ flexGrow: 0 }} contentContainerStyle={{ gap: 10, paddingBottom: 10 }} renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`Detalhes de ${item.name}, ${item.status}`} onPress={() => setSelectedId(item.id)} style={styles.station}><Text style={styles.stationName}>{item.name}</Text><Text style={{ color: statusColors[item.status], fontSize: 11 }}>{item.status}</Text><Text style={styles.body}>{money(floor.demo ? item.profitDay : item.floatingPl ?? null, item.currency, true)}</Text><Text style={styles.caption}>{floor.demo ? item.symbol ?? 'Ativo não informado' : `Flutuante · Conta ${item.accountNumber}`}</Text></Pressable>} />
       <Text style={[styles.caption, { textAlign: 'center', marginTop: 8 }]}>HANDLIV · Trading Floor · Sem execução de ordens</Text>
     </ScrollView>
     <Modal visible={expanded} animationType="fade" onRequestClose={() => setExpanded(false)}><View style={{ flex: 1, backgroundColor: C.bg, padding: mobile ? 8 : 20 }}>{scene(true)}{expanded && <StationDetails station={floor.stations.find(s => s.id === selectedId) ?? null} demo={floor.demo} onClose={close} />}</View></Modal>
