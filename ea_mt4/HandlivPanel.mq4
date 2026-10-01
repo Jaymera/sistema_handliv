@@ -29,7 +29,7 @@
 //+------------------------------------------------------------------+
 #property copyright "2026 - Handliv(R)"
 #property link      "https://handliv.com"
-#property version   "1.00"
+#property version   "1.02"
 #property description "Painel de Trading Handliv - executa no MT4 os comandos enviados pelo site (comprar/vender/fechar)"
 #property strict
 
@@ -237,7 +237,15 @@ bool HttpPost(const string url, const string json, string &response)
    // e rejeitado pelo parser da API antes de validar o token.
    if(size > 0 && post[size - 1] == 0) size--;
    // O overload com headers envia ArraySize(post) bytes (nao aceita data_size).
-   ArrayResize(post, size);
+   // Nunca enviar um corpo vazio: isso produz 422 missing antes da autenticacao.
+   if(size <= 0 || ArrayResize(post, size) != size)
+   {
+      int chars = StringLen(json);
+      g_status = "POST local | corpo vazio ou conversao UTF-8 falhou";
+      Print("HandlivPanel POST recusado localmente: ", g_status,
+            " chars=", chars, " bytes=", size, " endpoint=", url);
+      return false;
+   }
    code = WebRequest("POST", url, headers, HTTP_TIMEOUT,
                      post, result, resultHeaders);
    response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
@@ -608,27 +616,27 @@ void SendStats()
    int accountWins = 0, accountLosses = 0;
    CountWinLoss(accountWins, accountLosses);
 
-   string json = StringFormat(
-      "{\"account\":\"%s\",\"login\":\"%s\",\"token\":\"%s\","
-      "\"currency\":\"%s\","
-      "\"equity\":%.2f,\"balance\":%.2f,"
-      "\"margin\":%.2f,\"margin_level\":%.2f,\"floating_pl\":%.2f,"
-      "\"dd_percent\":%.2f,"
-      "\"profit_day\":%.2f,\"profit_week\":%.2f,\"profit_month\":%.2f,\"profit_total\":%.2f,"
-      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d,\"robots\":%s}",
-      IntegerToString(AccountNumber()),
-      IntegerToString(AccountNumber()),
-      AccountToken(),
-      AccountCurrency(),
-      equity, balance,
-      margin, mlevel, accountFloating,
-      dd,
-      HistoryProfit(day0, now + 60),
-      HistoryProfit(week0, now + 60),
-      HistoryProfit(month0, now + 60),
-      HistoryProfit(0, now + 60),
-      accountWins, accountLosses, accountWins + accountLosses,
-      OpenPositionsCount(), RobotStatsJson());
+   // Mesmo contrato do MT5, sem formatador variadico para o objeto completo.
+   // Conversoes explicitas deixam o corpo verificavel antes do WebRequest.
+   string json = "{\"account\":\"" + IntegerToString(AccountNumber()) +
+      "\",\"login\":\"" + IntegerToString(AccountNumber()) +
+      "\",\"token\":\"" + AccountToken() +
+      "\",\"currency\":\"" + AccountCurrency() + "\"," +
+      "\"equity\":" + DoubleToString(equity, 2) +
+      ",\"balance\":" + DoubleToString(balance, 2) +
+      ",\"margin\":" + DoubleToString(margin, 2) +
+      ",\"margin_level\":" + DoubleToString(mlevel, 2) +
+      ",\"floating_pl\":" + DoubleToString(accountFloating, 2) +
+      ",\"dd_percent\":" + DoubleToString(dd, 2) +
+      ",\"profit_day\":" + DoubleToString(HistoryProfit(day0, now + 60), 2) +
+      ",\"profit_week\":" + DoubleToString(HistoryProfit(week0, now + 60), 2) +
+      ",\"profit_month\":" + DoubleToString(HistoryProfit(month0, now + 60), 2) +
+      ",\"profit_total\":" + DoubleToString(HistoryProfit(0, now + 60), 2) +
+      ",\"win_trades\":" + IntegerToString(accountWins) +
+      ",\"loss_trades\":" + IntegerToString(accountLosses) +
+      ",\"total_trades\":" + IntegerToString(accountWins + accountLosses) +
+      ",\"open_positions\":" + IntegerToString(OpenPositionsCount()) +
+      ",\"robots\":" + RobotStatsJson() + "}";
    string resp;
    if(HttpPost(InpApiUrl + "/mt5/ea/stats", json, resp))
       g_status = "Stats OK " + TimeToStr(now, TIME_SECONDS);

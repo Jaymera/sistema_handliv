@@ -74,6 +74,22 @@ string AccountToken()
 //+------------------------------------------------------------------+
 //| HTTP                                                             |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Traduz erros de WebRequest do terminal (sem ecoar o corpo da resposta) |
+//+------------------------------------------------------------------+
+string HttpErrorHelp(const int code)
+{
+   switch(code)
+   {
+      case 4014: return " | ERRO 4014: libere " + InpApiUrl + " em Ferramentas > Opcoes > Expert Advisors > Allow WebRequest";
+      case 4060: return " | ERRO 4060: sem resposta da API. Verifique a URL, firewall/proxy e se a API esta online";
+      case 4051: return " | ERRO 4051: WebRequest desabilitado nas opcoes do terminal";
+      case 4063: return " | ERRO 4063: WebRequest nao permitido para este EA";
+      case 4071: return " | ERRO 4071: nao foi possivel abrir a conexao com a API";
+      default:   return " | erro WebRequest " + IntegerToString(code);
+   }
+}
+
 bool HttpGet(const string url, string &response)
 {
    string headers = "Content-Type: application/json\r\n";
@@ -98,14 +114,36 @@ bool HttpPost(const string url, const string json, string &response)
 {
    string headers = "Content-Type: application/json\r\n";
    char   post[]; char result[]; string resultHeaders;
-   StringToCharArray(json, post, 0, StringLen(json));
-   int code = WebRequest("POST", url, headers, 5000, post, result, resultHeaders);
-   if(code == -1 || code >= 400)
+   ResetLastError();
+   // Alguns builds incluem o terminador NUL no retorno; JSON com byte extra
+   // e rejeitado pelo parser da API antes de validar o token.
+   int size = StringToCharArray(json, post, 0, StringLen(json), CP_UTF8);
+   if(size > 0 && post[size - 1] == 0) size--;
+   // O overload com headers envia ArraySize(post) bytes (nao aceita data_size).
+   // Nunca enviar um corpo vazio: isso produz 422 missing antes da autenticacao.
+   if(size <= 0 || ArrayResize(post, size) != size)
    {
-      Print("HandlivPanel POST falhou HTTP ", code, " url=", url);
+      g_status = "POST local | corpo vazio ou conversao UTF-8 falhou";
+      Print("HandlivPanel POST recusado localmente: ", g_status,
+            " chars=", StringLen(json), " bytes=", size, " endpoint=", url);
       return false;
    }
+   int code = WebRequest("POST", url, headers, 5000, post, result, resultHeaders);
    response = CharArrayToString(result, 0, WHOLE_ARRAY, CP_UTF8);
+   if(code == -1 || code >= 400)
+   {
+      // FastAPI 422 retorna detail[].type/msg. Nao imprimir response inteiro:
+      // erros de validacao podem conter o corpo original com token.
+      string kind = JsonGetString(response, "type");
+      string reason = JsonGetString(response, "msg");
+      int err = (code == -1) ? GetLastError() : 0;
+      g_status = "POST HTTP " + IntegerToString(code) +
+                 (code == -1 ? HttpErrorHelp(err) :
+                 (kind != "" ? " | " + kind : "") +
+                 (reason != "" ? " | " + StringSubstr(reason, 0, 90) : ""));
+      Print("HandlivPanel POST falhou: ", g_status, " endpoint=", url);
+      return false;
+   }
    return true;
 }
 
@@ -348,29 +386,27 @@ void SendStats()
    int wins = 0, losses = 0;
    CountWinLoss(wins, losses);
 
-   string json = StringFormat(
-      "{\"account\":\"%s\",\"login\":\"%s\",\"token\":\"%s\","
-      "\"currency\":\"%s\","
-      "\"equity\":%.2f,\"balance\":%.2f,"
-      "\"margin\":%.2f,\"margin_level\":%.2f,\"floating_pl\":%.2f,"
-      "\"dd_percent\":%.2f,"
-      "\"profit_day\":%.2f,\"profit_week\":%.2f,\"profit_month\":%.2f,\"profit_total\":%.2f,"
-      "\"win_trades\":%d,\"loss_trades\":%d,\"total_trades\":%d,\"open_positions\":%d,\"robots\":%s}",
-      IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
-      IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)),
-      AccountToken(),
-      AccountInfoString(ACCOUNT_CURRENCY),
-      equity, balance,
-      AccountInfoDouble(ACCOUNT_MARGIN),
-      AccountInfoDouble(ACCOUNT_MARGIN_LEVEL),
-      AccountInfoDouble(ACCOUNT_PROFIT),
-      dd,
-      HistoryProfit(day0, now + 60),
-      HistoryProfit(week0, now + 60),
-      HistoryProfit(month0, now + 60),
-      HistoryProfit(0, now + 60),
-      wins, losses, wins + losses,
-      PositionsTotal(), RobotStatsJson());
+   // Mesmo contrato do MT4, sem formatador variadico para o objeto completo.
+   // Um unico StringFormat aninhado pode devolver corpo vazio e derrubar o envio.
+   string json = "{\"account\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) +
+      "\",\"login\":\"" + IntegerToString((int)AccountInfoInteger(ACCOUNT_LOGIN)) +
+      "\",\"token\":\"" + AccountToken() +
+      "\",\"currency\":\"" + AccountInfoString(ACCOUNT_CURRENCY) + "\"," +
+      "\"equity\":" + DoubleToString(equity, 2) +
+      ",\"balance\":" + DoubleToString(balance, 2) +
+      ",\"margin\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN), 2) +
+      ",\"margin_level\":" + DoubleToString(AccountInfoDouble(ACCOUNT_MARGIN_LEVEL), 2) +
+      ",\"floating_pl\":" + DoubleToString(AccountInfoDouble(ACCOUNT_PROFIT), 2) +
+      ",\"dd_percent\":" + DoubleToString(dd, 2) +
+      ",\"profit_day\":" + DoubleToString(HistoryProfit(day0, now + 60), 2) +
+      ",\"profit_week\":" + DoubleToString(HistoryProfit(week0, now + 60), 2) +
+      ",\"profit_month\":" + DoubleToString(HistoryProfit(month0, now + 60), 2) +
+      ",\"profit_total\":" + DoubleToString(HistoryProfit(0, now + 60), 2) +
+      ",\"win_trades\":" + IntegerToString(wins) +
+      ",\"loss_trades\":" + IntegerToString(losses) +
+      ",\"total_trades\":" + IntegerToString(wins + losses) +
+      ",\"open_positions\":" + IntegerToString(PositionsTotal()) +
+      ",\"robots\":" + RobotStatsJson() + "}";
    string resp;
    if(HttpPost(InpApiUrl + "/mt5/ea/stats", json, resp))
       g_status = "Stats OK " + TimeToString(now, TIME_SECONDS);
