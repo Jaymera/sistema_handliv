@@ -89,6 +89,28 @@ test('unscored news and absent inputs are not neutral, probabilities or invented
   await expect(page.getByText('Par de valores indisponível')).toHaveCount(3);
   await expect(page.getByText('Histórico de preços indisponível.')).toBeVisible();
   await page.getByRole('tab',{name:'Notícias',exact:true}).click();
-  await expect(page.getByText('Não pontuado',{exact:true})).toBeVisible();
+  await expect(page.getByText('Não classificado · Pontuação indisponível',{exact:true})).toBeVisible();
   await expect(page.getByText('Invalid Date',{exact:true})).toHaveCount(0);
+});
+
+test('news retains label-only polarities and measured neutral without inventing unclassified scores', async ({page}) => {
+  const data = fixture('PETR4', 35);
+  const news = [
+    {...data.news_items[0], title:'Positive label-only fixture', sentiment_label:'positive', sentiment_score:null},
+    {...data.news_items[0], title:'Negative label-only fixture', sentiment_label:'negative', sentiment_score:null},
+    {...data.news_items[0], title:'Measured neutral fixture', sentiment_label:'neutral', sentiment_score:0},
+    {...data.news_items[0], title:'Unclassified fixture', sentiment_label:null, sentiment_score:null},
+  ];
+  await page.route('**/api/v1/assets/*/live-analysis', route => route.fulfill({json:{
+    ...data, sentiment_sample_count:1,
+    score:{...data.score,subscores:{...data.score.subscores,sentiment:50}}, news_items:news,
+  }}));
+  await page.route('**/api/v1/watchlist',route=>route.fulfill({json:[]}));
+  await page.goto('/asset/PETR4');
+  await page.getByRole('tab',{name:'Notícias',exact:true}).click();
+  for (const text of ['positive · Pontuação indisponível', 'negative · Pontuação indisponível',
+    'neutral · 0.00', 'Não classificado · Pontuação indisponível']) {
+    await expect(page.getByText(text,{exact:true})).toBeVisible();
+  }
+  await expect(page.getByText(/Classificação textual das notícias; não prevê a direção do preço/)).toBeVisible();
 });

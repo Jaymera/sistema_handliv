@@ -17,21 +17,37 @@ _PT_TERMS = {
     "crescimento": 2, "crescem": 2, "cresce": 2, "recorde": 2,
     "valorização": 2, "valorizacao": 2, "supera": 1.5,
 }
-_PT_HINTS = {"em", "com", "para", "ações", "acoes", "bolsas", "fecham", "empresa", "anuncia", "lucro", "queda", "alta"}
+# Structural language evidence, not additional positive/negative lexicon entries.
+_PT_HINTS = {
+    "em", "com", "para", "ações", "acoes", "bolsas", "fecham", "empresa",
+    "anuncia", "lucro", "queda", "alta", "preço", "preco", "aviação", "aviacao",
+    "outubro", "recebe", "pagamento", "novas", "parcelas", "subsídio", "subsidio",
+}
+_EN_HINTS = {"company", "publishes", "quarterly", "report", "announces", "shares", "earnings", "meeting", "board"}
+
 
 def analyze_news_text(title: str | None, summary: str | None = None, language: str | None = None) -> tuple[float | None, str | None]:
     text = " ".join(part for part in (title, summary) if part and part.strip())
     if not text:
         return None, None
     words = re.findall(r"[^\W\d_]+", text.lower(), flags=re.UNICODE)
-    if (language or "").lower().startswith("pt") or len(set(words) & _PT_HINTS) >= 2:
+    if not words:
+        return None, None
+    language = (language or "").strip().lower()
+    word_set = set(words)
+    if re.match(r"^(pt|portuguese|português)(?:$|[-_\s(])", language) or len(word_set & _PT_HINTS) >= 2:
         signals = [_PT_TERMS[word] for word in words if word in _PT_TERMS]
-        if not signals:
-            return None, None  # Not a measured neutral reading.
         score = round(sum(signals) / (sum(abs(value) for value in signals) + 1), 4)
     else:
-        score = SentimentIntensityAnalyzer().polarity_scores(text)["compound"]
-        if score == 0:
+        analyzer = SentimentIntensityAnalyzer()
+        score = analyzer.polarity_scores(text)["compound"]
+        # A zero compound is a measurement only with language or lexicon evidence.
+        english_evidence = (
+            re.match(r"^(en|english)(?:$|[-_\s(])", language)
+            or len(word_set & _EN_HINTS) >= 2
+            or any(word in analyzer.lexicon for word in words)
+        )
+        if score == 0 and not english_evidence:
             return None, None
     label = "positive" if score >= 0.05 else "negative" if score <= -0.05 else "neutral"
     return score, label

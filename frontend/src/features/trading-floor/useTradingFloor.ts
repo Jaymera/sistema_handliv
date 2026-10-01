@@ -55,14 +55,16 @@ export function useTradingFloor() {
   }, [user?.id, !!token, qc]);
   const features = useQuery({
     queryKey: ['trading-floor-features', user?.id], queryFn: featuresApi.myFeatures,
-    enabled: !!token && !!user && focused && active, staleTime: 60_000,
+    // Initial entitlement loading must survive window blur; only periodic polling pauses.
+    enabled: !!token && !!user && focused, staleTime: 60_000,
     refetchInterval: focused && active ? 60_000 : false, refetchIntervalInBackground: false,
   });
   const allowed = !!token && !!user && (user.role === 'super_admin' || !!features.data?.features.trading_panel);
   const polling = canPollFloor(!!token, allowed, focused, active);
   const stats = useQuery({
     queryKey: ['trading-floor-stats', user?.id], queryFn: statsApi.list,
-    enabled: polling, staleTime: 10_000, refetchInterval: polling ? 15_000 : false,
+    // Fetch the first snapshot on entry, even when periodic refresh is paused.
+    enabled: !!token && allowed && focused, staleTime: 10_000, refetchInterval: polling ? 15_000 : false,
     refetchIntervalInBackground: false, refetchOnWindowFocus: true,
   });
   const accounts: FloorAccount[] = allowed ? stats.data?.items ?? [] : [];

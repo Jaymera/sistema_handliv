@@ -7,7 +7,7 @@ import { assetsApi, watchlistApi } from '@/api/client';
 import { FavoriteStar, MarketBadge } from '@/components/ui';
 import { Meter, PriceChart, T } from './visuals';
 import { analysisEvidence } from './evidence';
-import { dailySessions, displayEvidence, factorEvidence, windowEvidence } from './workspace';
+import { articleSentimentDisplay, dailySessions, displayEvidence, factorEvidence, windowEvidence } from './workspace';
 
 type Analysis = Awaited<ReturnType<typeof assetsApi.liveAnalysis>>;
 type Props = { data: Analysis; inWatchlist: boolean; onToggle: () => void; onBack: () => void; onRefresh: () => void; refreshing: boolean };
@@ -154,14 +154,14 @@ export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, 
 
         {tab === 'Notícias' ? <>
           <Panel title="COBERTURA EDITORIAL / SENTIMENTO" wide><Text style={s.body}>{data.news_summary || 'Resumo indisponível.'}</Text>
-            <View style={s.stats}>{[['Notícias exibidas',evidence.newsCount],['Com pontuação exibida',evidence.measuredNews],['Fontes identificadas',evidence.newsSources],['Amostra do motor',evidence.scoredNews ?? 'Não informada']].map(([label,value]) =>
+            <View style={s.stats}>{[['Notícias exibidas',evidence.newsCount],['Com pontuação exibida',evidence.measuredNews],['Positivas',evidence.sentimentCategories.positive],['Negativas',evidence.sentimentCategories.negative],['Neutras',evidence.sentimentCategories.neutral],['Não classificadas',evidence.sentimentCategories.unclassified],['Fontes identificadas',evidence.newsSources],['Amostra do motor',evidence.scoredNews ?? 'Não informada']].map(([label,value]) =>
               <View key={label} style={s.stat}><Text style={s.dim}>{label}</Text><Text style={s.value}>{value}</Text></View>)}</View>
-            <Text style={s.dim}>Última data de publicação retornada: {display.latestNewsDate ?? 'indisponível'}. Notícia sem pontuação não é sentimento neutro. A amostra do motor pode incluir artigos não exibidos.</Text>
+            <Text style={s.dim}>Última data de publicação retornada: {display.latestNewsDate ?? 'indisponível'}. Ausência de pontuação não implica neutralidade. Classificação textual das notícias; não prevê a direção do preço. A amostra do motor pode incluir artigos não exibidos.</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.inline}>{['Todas',...sources].map(source => <Pressable key={source} accessibilityRole="button" accessibilityState={{selected:newsFilter === source}} onPress={() => setNewsFilter(source)} style={[s.window,newsFilter === source && s.activeTab]}><Text style={s.tabText}>{source}</Text></Pressable>)}</View></ScrollView>
           </Panel>
           {news.length ? news.map((n,index) => <Panel key={`${n.url}-${index}`} title={n.source || 'FONTE NÃO INFORMADA'}><Text style={s.newsTitle}>{n.title}</Text>{n.summary ? <Text style={s.muted}>{n.summary}</Text> : null}
             <Metric label="Publicação" value={displayEvidence({news_items:[n]}).latestNewsDate ?? 'Indisponível'} />
-            <Metric label="Sentimento do texto" value={finite(n.sentiment_score) ? `${n.sentiment_label || 'Pontuado'} · ${n.sentiment_score.toFixed(2)}` : 'Não pontuado'} />
+            <Metric label="Sentimento do texto" value={articleSentimentDisplay(n).text} />
             {/^(https?):\/\//i.test(n.url) ? <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(n.url); }} style={s.button}><Text style={[s.buttonText,{color:T.cyan}]}>Ler na fonte</Text><Ionicons name="open-outline" size={14} color={T.cyan} /></Pressable> : <Text style={s.dim}>Link indisponível.</Text>}
           </Panel>) : <Panel title="SEM ARTIGOS NESTA SELEÇÃO" wide><Text style={s.muted}>Nenhuma notícia retornada para este filtro. Não implica sentimento neutro.</Text></Panel>}
         </> : null}

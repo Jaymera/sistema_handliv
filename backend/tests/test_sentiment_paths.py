@@ -50,6 +50,14 @@ def test_live_scores_saved_unscored_real_article(monkeypatch):
     assert response['sentiment_sample_count'] == 1
 
 
+def test_live_neutral_article_is_a_measured_sample(monkeypatch):
+    response = setup_live(monkeypatch, DB([saved('Company publishes the quarterly report')]))
+    assert response['score']['subscores']['sentiment'] == 50
+    assert response['news_items'][0]['sentiment_score'] == 0
+    assert response['news_items'][0]['sentiment_label'] == 'neutral'
+    assert response['sentiment_sample_count'] == 1
+
+
 def test_live_without_any_news_exposes_no_sentiment_measurement(monkeypatch):
     response = setup_live(monkeypatch, DB([]))
     assert response['score']['subscores']['sentiment'] is None
@@ -77,6 +85,20 @@ def test_scheduled_scores_saved_unscored_real_article(monkeypatch):
     monkeypatch.setattr(compute_scores.cache, 'set_json', lambda *a, **k: None)
     assert compute_scores.compute_all_scores.run() == 1
     assert db.rows[0].sentiment_score < 50
+
+
+def test_scheduled_neutral_article_stores_measured_midpoint(monkeypatch):
+    asset = SimpleNamespace(id='asset-1', symbol='ABCD')
+    db = DB([saved('Petrobras recebe pagamento de novas parcelas de subsídio da gasolina e do diesel')])
+    db.scalars = lambda query: SimpleNamespace(all=lambda: [asset] if 'assets' in str(query) else db.articles)
+    monkeypatch.setattr(compute_scores, 'SessionLocal', lambda: db)
+    bars = [{'open': 10, 'high': 11, 'low': 9, 'close': 10, 'volume': 100}]
+    monkeypatch.setattr(compute_scores.market_data, 'fetch_history', lambda *a, **k: bars)
+    monkeypatch.setattr(compute_scores.market_data, 'fetch_info', lambda *a: {})
+    monkeypatch.setattr(compute_scores.market_data, 'fetch_quote', lambda *a: {})
+    monkeypatch.setattr(compute_scores.cache, 'set_json', lambda *a, **k: None)
+    assert compute_scores.compute_all_scores.run() == 1
+    assert db.rows[0].sentiment_score == 50
 
 
 def test_scheduled_without_articles_stores_missing_measurement(monkeypatch):

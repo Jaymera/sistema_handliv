@@ -33,9 +33,16 @@ test('missing sentiment is labeled instead of rendered as a numeric meter', () =
   const { displayEvidence } = require('../src/features/asset-terminal/workspace.ts');
   const input = { score: { subscores: { sentiment: 50 } }, sentiment_sample_count: 0 };
   assert.equal(displayEvidence(input).sentiment, null, 'zero sample cannot masquerade as neutral');
-  assert.equal(displayEvidence({score:input.score}).sentiment, null, 'unknown sample cannot masquerade as measured');
+  const legacy = {score:input.score};
+  assert.equal(displayEvidence(legacy).sentiment, 50, 'retain the legacy score returned by the API without inventing coverage');
+  const { analysisEvidence } = require('../src/features/asset-terminal/evidence.ts');
+  assert.equal(analysisEvidence(legacy).scoredNews, null, 'unknown coverage must remain unknown');
+  assert.match(panel, /Amostra pontuada não informada/);
   assert.equal(displayEvidence({...input,sentiment_sample_count:1}).sentiment,50, 'measured neutral is retained');
   assert.match(panel, /value:display\.sentiment/);
   assert.match(panel, /finite\(r\.value\) \? <Meter/);
   assert.match(panel, /Sem amostra verificável/);
+});
+test('textual classification is explicitly not a forecast of price direction', () => {
+  assert.match(panel, /Classificação textual das notícias; não prevê a direção do preço/);
 });

@@ -1,4 +1,6 @@
-type ArticleEvidence = { source?: string | null; sentiment_score?: number | null };
+import { articleSentimentDisplay, type ArticleSentiment } from './workspace';
+
+type ArticleEvidence = ArticleSentiment & { source?: string | null };
 type DailyBar = { trade_date?: string | null; close?: number | null };
 type EvidenceInput = {
   price_history?: DailyBar[];
@@ -23,6 +25,10 @@ export function analysisEvidence(data: EvidenceInput) {
   const dailyChange = validPair ? last - previous : null;
   const articles = data.news_items ?? [];
   const measurable = articles.filter(a => typeof a.sentiment_score === 'number' && Number.isFinite(a.sentiment_score));
+  const sentimentCategories = { positive: 0, negative: 0, neutral: 0, unclassified: 0 };
+  for (const article of articles) {
+    sentimentCategories[articleSentimentDisplay(article).label ?? 'unclassified']++;
+  }
   const sources = new Set(articles.map(a => a.source?.trim()).filter(Boolean));
   const present = (record?: Record<string, number | null>) => Object.values(record ?? {})
     .filter(v => typeof v === 'number' && Number.isFinite(v)).length;
@@ -33,6 +39,7 @@ export function analysisEvidence(data: EvidenceInput) {
     dailyChangePct: dailyChange == null ? null : (dailyChange / previous!) * 100,
     newsCount: articles.length,
     measuredNews: measurable.length,
+    sentimentCategories,
     scoredNews: Number.isSafeInteger(data.sentiment_sample_count) && (data.sentiment_sample_count ?? -1) >= 0
       ? data.sentiment_sample_count! : null,
     newsSources: sources.size,

@@ -32,6 +32,14 @@ export function factorEvidence(data: { last_price?: number | null; indicators?: 
       detail: finite(rsi) ? `${rsi.toFixed(1)} · faixas 30 / 70` : 'Indicador indisponível' }];
 }
 
+export type ArticleSentiment = { sentiment_label?: string | null; sentiment_score?: number | null };
+export function articleSentimentDisplay(article: ArticleSentiment) {
+  const label: 'positive' | 'negative' | 'neutral' | null = article.sentiment_label === 'positive' || article.sentiment_label === 'negative' || article.sentiment_label === 'neutral'
+    ? article.sentiment_label : null;
+  const score = finite(article.sentiment_score) ? article.sentiment_score : null;
+  return { label, score, text: `${label ?? 'Não classificado'} · ${score == null ? 'Pontuação indisponível' : score.toFixed(2)}` };
+}
+
 export function displayEvidence(data: {
   score?: { confidence?: number | null; subscores?: { sentiment?: number | null } };
   sentiment_sample_count?: number;
@@ -45,7 +53,7 @@ export function displayEvidence(data: {
     .sort((a, b) => Date.parse(b) - Date.parse(a));
   return {
     confidence: finite(confidence) && confidence >= 0 && confidence <= 100 ? confidence : null,
-    sentiment: Number.isSafeInteger(data.sentiment_sample_count) && data.sentiment_sample_count! > 0 && finite(sentiment) ? sentiment : null,
+    sentiment: (data.sentiment_sample_count == null || (Number.isSafeInteger(data.sentiment_sample_count) && data.sentiment_sample_count > 0)) && finite(sentiment) ? sentiment : null,
     latestNewsDate: dates.length ? dates[0].slice(0,10).split('-').reverse().join('/') : null,
   };
 }

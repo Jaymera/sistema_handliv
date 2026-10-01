@@ -11,9 +11,10 @@ def test_portuguese_news_with_clear_direction_has_real_score():
     score, label = module.analyze_news_text('Empresa anuncia crescimento e lucro recorde', language='pt-BR')
     assert score is not None and score > 0 and label == 'positive'
 
-def test_portuguese_news_without_supported_signal_is_unmeasured_not_neutral():
-    assert module.analyze_news_text('Companhia convoca assembleia de acionistas', language='pt-BR') == (None, None)
-    assert module.analyze_news_text('Multiplan levanta R$ 300 milhões via CRIs', language='pt-BR') == (None, None)
+def test_supported_portuguese_factual_news_retains_measured_lexical_neutral():
+    # The supported-language text was analyzed; zero is not a missing observation.
+    assert module.analyze_news_text('Companhia convoca assembleia de acionistas', language='pt-BR') == (0, 'neutral')
+    assert module.analyze_news_text('Multiplan levanta R$ 300 milhões via CRIs', language='pt-BR') == (0, 'neutral')
 
 def test_language_fallback_detects_portuguese_market_headline():
     score, _ = module.analyze_news_text('Bolsas da Ásia fecham em queda')

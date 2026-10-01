@@ -9,7 +9,7 @@ const catalogue = [
   { symbol: 'EURUSD', name: 'Euro / dólar — fixture de interface', market: 'FOREX', asset_type: 'forex', currency: 'USD' },
 ];
 
-test('dashboard workspace renders real-contract catalogue and watchlist without overflow', async ({ page, isMobile }) => {
+test('dashboard workspace renders real-contract catalogue and watchlist without overflow', async ({ page, isMobile, baseURL }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.addInitScript(() => {
@@ -50,6 +50,6 @@ test('dashboard workspace renders real-contract catalogue and watchlist without 
   await search.fill('AAPL');
   await search.press('Enter');
   await page.waitForTimeout(100);
-  await expect(page).toHaveURL(/localhost:8081\/$/);
+  await expect(page).toHaveURL(new URL('/', baseURL).href);
   expect(errors).toEqual([]);
 });
