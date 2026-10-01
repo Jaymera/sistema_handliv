@@ -1,234 +1,201 @@
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import { useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { useQuery } from '@tanstack/react-query';
+import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import type { assetsApi } from '@/api/client';
+import { assetsApi, watchlistApi } from '@/api/client';
 import { FavoriteStar, MarketBadge } from '@/components/ui';
-import { CountUp, Meter, PriceChart, T } from './visuals';
+import { Meter, PriceChart, T } from './visuals';
 import { analysisEvidence } from './evidence';
+import { dailySessions, displayEvidence, factorEvidence, windowEvidence } from './workspace';
 
 type Analysis = Awaited<ReturnType<typeof assetsApi.liveAnalysis>>;
 type Props = { data: Analysis; inWatchlist: boolean; onToggle: () => void; onBack: () => void; onRefresh: () => void; refreshing: boolean };
-const mono = 'monospace';
+const TABS = ['Visão geral', 'Gráfico', 'Técnica', 'Fundamentos', 'Notícias', 'Evidências'] as const;
+const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+const fmt = (value: unknown, digits = 2) => finite(value) ? value.toFixed(digits) : 'Indisponível';
+const states: Record<string, string> = { above: 'Acima', below: 'Abaixo', equal: 'Iguais', unavailable: 'Indisponível', overbought: 'Sobrecomprado', oversold: 'Sobrevendido', 'in-range': 'Entre 30 e 70' };
 
-function Panel({ title, children, width, accent }: { title: string; children: React.ReactNode; width?: number; accent?: string }) {
-  return <View style={[styles.panel, width ? { width } : { flex: 1 }, accent ? { borderTopColor: accent, borderTopWidth: 2 } : null]}>
-    <View style={styles.panelHead}><View style={[styles.headMark, { backgroundColor: accent ?? T.cyan }]} /><Text style={styles.panelTitle}>{title}</Text></View>
-    {children}
+function Panel({ title, children, wide = false }: { title: string; children: React.ReactNode; wide?: boolean }) {
+  return <View style={[s.panel, wide && { flexBasis: '100%' }]}><Text style={s.kicker}>{title}</Text>{children}</View>;
+}
+function Metric({ label, value, note, color = T.ink }: { label: string; value: string; note?: string; color?: string }) {
+  return <View style={s.metric}><Text style={[s.muted, { flex: 1 }]}>{label}</Text><View style={{ flex: 1, alignItems: 'flex-end' }}>
+    <Text style={[s.value, { color }]}>{value}</Text>{note ? <Text style={s.dim}>{note}</Text> : null}</View></View>;
+}
+
+// Original Expo component: OpenTerminal ticker workspace interaction + OpenStock compact header hierarchy.
+function AssetPicker({ symbol }: { symbol: string }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const { data, isFetching, isError } = useQuery({ queryKey: ['asset-picker', query.trim()],
+    queryFn: () => assetsApi.list({ q: query.trim(), limit: 12 }), enabled: open && query.trim().length >= 2 });
+  const { data: watchlist } = useQuery({ queryKey: ['watchlist'], queryFn: watchlistApi.list, enabled: open });
+  const items = query.trim().length >= 2 ? (data?.items ?? []) as {symbol: string; name: string; market?: string}[]
+    : (watchlist ?? []).map(w => w.asset);
+  return <View style={s.picker}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Selecionar outro ativo" onPress={() => setOpen(!open)} style={s.button}>
+      <Ionicons name="search" color={T.cyan} size={16} /><Text style={s.buttonText}>Trocar ativo · {symbol}</Text><Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={14} color={T.muted} />
+    </Pressable>
+    {open ? <View style={s.pickerBody}>
+      <TextInput accessibilityLabel="Buscar ticker ou empresa" value={query} onChangeText={setQuery} placeholder="Ticker ou empresa · mínimo 2 letras" placeholderTextColor={T.dim} style={s.input} autoCapitalize="none" />
+      <Text style={s.dim}>{query.trim().length >= 2 ? 'RESULTADOS DO CATÁLOGO' : 'SUA WATCHLIST · OU BUSQUE NO CATÁLOGO'}</Text>
+      {isFetching ? <ActivityIndicator color={T.cyan} /> : isError ? <Text style={s.muted}>Busca indisponível. Tente novamente.</Text> : items.length ? items.map(a =>
+        <Pressable key={a.symbol} accessibilityRole="button" accessibilityLabel={`Analisar ${a.symbol}`} onPress={() => { setOpen(false); router.push(`/asset/${encodeURIComponent(a.symbol)}`); }} style={s.pickerRow}>
+          <Text style={s.value}>{a.symbol}</Text><Text style={[s.muted, { flex: 1 }]} numberOfLines={1}>{a.name}</Text><Ionicons name="arrow-forward" size={15} color={T.cyan} />
+        </Pressable>) : <Text style={s.muted}>{query.trim().length >= 2 ? 'Nenhum ativo encontrado.' : 'Busque um ativo para iniciar a análise.'}</Text>}
+    </View> : null}
   </View>;
 }
-function RowMetric({ label, value, color = T.ink, note }: { label: string; value: string; color?: string; note?: string }) {
-  return <View style={styles.metricRow}><Text style={styles.muted}>{label}</Text><View style={{ alignItems: 'flex-end', maxWidth: '65%' }}>
-    <Text style={[styles.metricValue, { color }]}>{value}</Text>{note ? <Text style={styles.dim}>{note}</Text> : null}</View></View>;
-}
-function SkeletonBlock({ width, height }: { width: string; height: number }) {
-  return <View style={{ width: width as any, height, backgroundColor: T.track, borderRadius: 4, opacity: 0.7 }} />;
-}
+
 export function TerminalSkeleton({ symbol }: { symbol: string }) {
-  const { width } = useWindowDimensions();
-  return <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-    <View style={styles.shell}><Text style={styles.eyebrow}>HANDLIV / QUANT ANALYTICS</Text>
-      <Text style={styles.title}>Processando {symbol}</Text>
-      <Text style={styles.muted}>Consultando a análise existente do ativo...</Text>
-      <View style={[styles.grid, { marginTop: 22 }]}>
-        {[0, 1, 2, 3, 4, 5].map((key) => <View key={key} style={[styles.panel, { width: width >= 900 ? '32%' : '100%', minHeight: key === 1 ? 180 : 115, gap: 15 }]}>
-          <SkeletonBlock width="38%" height={10} /><SkeletonBlock width="75%" height={18} /><SkeletonBlock width="57%" height={8} />
-        </View>)}
-      </View>
-    </View>
-  </ScrollView>;
+  return <View style={[s.root, { padding: 24, gap: 18 }]}><Text style={s.kicker}>HANDLIV / ASSET WORKSPACE</Text><Text style={s.title}>{symbol}</Text>
+    <ActivityIndicator color={T.cyan} /><Text style={s.muted}>Consultando fontes e a análise existente…</Text>
+    {[0, 1, 2].map(i => <View key={i} style={{ backgroundColor: T.track, height: 100, borderRadius: 12 }} />)}</View>;
 }
 
 export function AssetTerminal({ data, inWatchlist, onToggle, onBack, onRefresh, refreshing }: Props) {
-  const { width: screen } = useWindowDimensions();
-  const desktop = screen >= 980;
-  const tablet = screen >= 640;
-  const usable = Math.min(screen - (tablet ? 44 : 24), 1376);
-  const gap = 10;
-  const third = (usable - gap * 2) / 3;
-  const half = (usable - gap) / 2;
-  const quarter = (usable - gap * 3) / 4;
-  const full = usable;
+  const { width } = useWindowDimensions();
+  const [tab, setTab] = useState<typeof TABS[number]>('Visão geral');
+  const [window, setWindow] = useState(30);
+  const [newsFilter, setNewsFilter] = useState('Todas');
+  const evidence = analysisEvidence({ ...data, price_history: dailySessions(data.price_history) });
+  const display = displayEvidence(data);
+  const selected = windowEvidence(data.price_history ?? [], window);
+  const factors = factorEvidence(data);
   const score = data.score;
-  const evidence = analysisEvidence(data);
-  const ind = data.indicators;
-  const fund = data.fundamentals;
-  const color = data.recommendation_color === 'green' || data.recommendation_color === 'lime' ? T.green
-    : data.recommendation_color === 'amber' ? T.amber : T.red;
-  const priceFlash = useRef(new Animated.Value(0));
-  const [flashColor, setFlashColor] = useState(T.green);
-  const previousPrice = useRef<number | null>(null);
-  useEffect(() => {
-    if (data.last_price == null) return;
-    if (previousPrice.current != null && previousPrice.current !== data.last_price) {
-      setFlashColor(data.last_price > previousPrice.current ? T.green : T.red);
-      priceFlash.current.setValue(0.28);
-      Animated.timing(priceFlash.current, { toValue: 0, duration: 700, useNativeDriver: true }).start();
-    }
-    previousPrice.current = data.last_price;
-  }, [data.last_price]);
-  const money = (n: number) => `${data.currency} ${n.toFixed(2)}`;
-  const trendColor = /up|bull|alta/i.test(score.trend) ? T.green : /down|bear|baixa/i.test(score.trend) ? T.red : T.amber;
-  const scoreColor = score.final_score >= 55 ? T.green : score.final_score < 45 ? T.red : T.amber;
-  const indicatorRows = [
-    { label: 'RSI · 14', value: ind.rsi, digits: 1, note: ind.rsi == null ? undefined : ind.rsi < 30 ? 'sobrevendido' : ind.rsi > 70 ? 'sobrecomprado' : 'neutro' },
-    { label: 'EMA · 20', value: ind.ema20, digits: 2 },
-    { label: 'EMA · 50', value: ind.ema50, digits: 2, note: ind.ema20 != null && ind.ema50 != null ? ind.ema20 > ind.ema50 ? 'cruzamento alcista' : 'cruzamento baixista' : undefined },
-    { label: 'MACD', value: ind.macd, digits: 3 },
-    { label: 'MACD · sinal', value: ind.macd_signal, digits: 3 },
-  ];
-  const fundamentals = [
-    { label: 'P/L', value: fund.pe_ratio, digits: 2 },
-    { label: 'P/VPA', value: fund.pb_ratio, digits: 2 },
-    { label: 'Dividend Yield', value: fund.dividend_yield, digits: 2, percent: true },
-    { label: 'ROE', value: fund.roe, digits: 1, percent: true },
-    { label: 'Dívida / Patrimônio', value: fund.debt_to_equity, digits: 2 },
-    { label: 'Cresc. receita', value: fund.revenue_growth, digits: 1, percent: true },
-  ];
-  return <ScrollView style={styles.root} contentContainerStyle={[styles.content, { paddingHorizontal: tablet ? 22 : 12 }]}>
-    <View style={[styles.shell, { width: usable }]}>
-      <View style={styles.topline}><View style={styles.inline}><View style={styles.brandMark}><Text style={styles.brandLetter}>H</Text></View>
-        <View><Text style={styles.eyebrow}>HANDLIV  /  QUANT ANALYTICS</Text><Text style={styles.muted}>TERMINAL DE ANÁLISE · DADOS DA PLATAFORMA</Text></View></View>
-        <View style={styles.inline}><Text style={[styles.eyebrow, { color: T.cyan }]}>ANÁLISE SOB DEMANDA</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Atualizar análise" onPress={onRefresh} disabled={refreshing} style={styles.iconButton}>
-            <Ionicons name="refresh" color={T.cyan} size={17} /></Pressable></View>
+  const tint = data.recommendation_color === 'green' || data.recommendation_color === 'lime' ? T.green : data.recommendation_color === 'amber' ? T.amber : T.red;
+  const money = (v: unknown) => finite(v) ? `${data.currency} ${v.toFixed(2)}` : 'Indisponível';
+  const overview = tab === 'Visão geral';
+  const showChart = overview || tab === 'Gráfico';
+  const showTechnical = overview || tab === 'Técnica';
+  const sources = Array.from(new Set((data.news_items ?? []).map(n => n.source?.trim()).filter(Boolean)));
+  const news = (data.news_items ?? []).filter(n => newsFilter === 'Todas' || n.source?.trim() === newsFilter);
+  const indicatorRows = [['RSI · 14','rsi'],['EMA · 20','ema20'],['EMA · 50','ema50'],['MACD','macd'],['MACD · sinal','macd_signal']];
+  const fundamentals = [ {label:'P/L',key:'pe_ratio'}, {label:'P/VPA',key:'pb_ratio'}, {label:'Dividend yield',key:'dividend_yield',percent:true},
+    {label:'ROE',key:'roe',percent:true}, {label:'Dívida / patrimônio',key:'debt_to_equity'}, {label:'Crescimento de receita',key:'revenue_growth',percent:true} ];
+  return <ScrollView style={s.root} contentContainerStyle={[s.content, width < 640 && { paddingHorizontal: 12 }]}>
+    <View style={s.shell}>
+      <View style={s.toolbar}><Pressable onPress={onBack} accessibilityRole="button" style={s.button}><Ionicons name="arrow-back" size={16} color={T.muted} /><Text style={s.buttonText}>Voltar</Text></Pressable>
+        <Text style={s.kicker}>HANDLIV / ASSET WORKSPACE</Text>
+        <Pressable onPress={onRefresh} disabled={refreshing} accessibilityRole="button" accessibilityLabel="Atualizar análise" style={[s.button, refreshing && { opacity: 0.5 }]}>
+          <Ionicons name="refresh" size={16} color={T.cyan} /><Text style={s.buttonText}>{refreshing ? 'Consultando…' : 'Atualizar análise'}</Text></Pressable>
       </View>
-      <View style={[styles.assetHead, !tablet && { alignItems: 'flex-start' }]}>
-        <View style={{ flex: 1 }}><View style={styles.inline}><MarketBadge market={data.market} /><Text style={styles.eyebrow}>{data.symbol}</Text></View>
-          <Text style={styles.title}>{data.name}</Text>
-          <Text style={styles.muted}>{[data.sector, data.industry].filter(Boolean).join('  /  ') || 'Setor não informado'}</Text></View>
-        <View style={{ alignItems: tablet ? 'flex-end' : 'flex-start', gap: 5 }}>
-          <View style={styles.inline}><Text style={styles.eyebrow}>ÚLTIMO FECHAMENTO DIÁRIO</Text><FavoriteStar active={inWatchlist} onPress={onToggle} size={24} /></View>
-          <View><Text style={styles.price}>{data.last_price == null ? '—' : money(data.last_price)}</Text>
-            <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: flashColor, opacity: priceFlash.current }]} /></View>
-          <Text style={styles.dim}>{evidence.priceDate ? `Pregão de ${evidence.priceDate} · não é cotação em tempo real` : 'Data do fechamento indisponível · não é cotação em tempo real'}</Text>
-          <Text style={[styles.muted, { color: evidence.dailyChange == null ? T.muted : evidence.dailyChange >= 0 ? T.green : T.red }]}>
-            {evidence.dailyChange == null || evidence.dailyChangePct == null ? 'Variação entre fechamentos: indisponível' :
-              `Entre os 2 últimos fechamentos: ${evidence.dailyChange >= 0 ? '+' : '−'}${money(Math.abs(evidence.dailyChange))} (${evidence.dailyChangePct >= 0 ? '+' : ''}${evidence.dailyChangePct.toFixed(2)}%)`}
-          </Text>
-          {data.last_price != null && ind.ema20 != null ? <Text style={[styles.muted, { color: data.last_price > ind.ema20 ? T.green : T.red }]}>
-            {data.last_price > ind.ema20 ? '▲ Acima EMA20' : '▼ Abaixo EMA20'}</Text> : null}
+      <AssetPicker symbol={data.symbol} />
+      <View style={[s.assetHeader, width < 640 && { flexDirection: 'column', alignItems: 'stretch' }]}>
+        <View style={{ flex: 1, minWidth: 0, gap: 8 }}><View style={s.inline}><MarketBadge market={data.market} /><Text style={s.symbol}>{data.symbol}</Text><FavoriteStar active={inWatchlist} onPress={onToggle} size={24} /></View>
+          <Text style={s.title}>{data.name}</Text><Text style={s.muted}>{[data.sector, data.industry].filter(Boolean).join(' / ') || 'Classificação setorial não informada'}</Text>
+          <Text style={s.dim}>Análise sob demanda · sem streaming de cotações</Text>
+        </View>
+        <View style={{ gap: 7, flex: 1, minWidth: 0 }}><Text style={s.kicker}>ÚLTIMO FECHAMENTO DIÁRIO</Text><Text style={s.price}>{money(data.last_price)}</Text>
+          <Text style={s.muted}>{evidence.priceDate ? `Pregão de ${evidence.priceDate}` : 'Data do fechamento indisponível'} · não é cotação em tempo real</Text>
+          <Text style={[s.value, { textAlign: 'left', color: evidence.dailyChangePct == null ? T.muted : evidence.dailyChangePct >= 0 ? T.green : T.red }]}>
+            {evidence.dailyChangePct == null ? 'Variação diária indisponível' : `${evidence.dailyChangePct >= 0 ? '+' : ''}${evidence.dailyChangePct.toFixed(2)}% · entre os 2 últimos fechamentos`}</Text>
         </View>
       </View>
+      <View style={s.provenance}><Ionicons name="information-circle-outline" size={17} color={T.cyan} /><Text style={[s.dim, { flex: 1 }]}>Fonte: API Handliv / análise do ativo. Provedor não informado nesta resposta · atraso intradiário não informado · data de cálculo não informada.</Text></View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.tabScroll}><View style={s.inline}>{TABS.map(name =>
+        <Pressable key={name} accessibilityRole="tab" accessibilityState={{ selected: tab === name }} accessibilityLabel={name} onPress={() => setTab(name)} style={[s.tab, tab === name && s.activeTab]}>
+          <Text style={[s.tabText, tab === name && { color: T.cyan }]}>{name}</Text>{name === 'Notícias' ? <Text style={s.dim}>{evidence.newsCount}</Text> : null}</Pressable>)}</View></ScrollView>
 
-      <View style={styles.grid}>
-        <Panel title="COBERTURA DOS DADOS · FONTES DA ANÁLISE" width={full} accent={T.cyan}>
-          <View style={styles.evidenceGrid}>
-            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
-              <Text style={styles.eyebrow}>PREÇO / HISTÓRICO</Text>
-              <Text style={styles.metricValue}>{evidence.priceBars ? `${evidence.priceBars} ${evidence.priceBars === 1 ? 'pregão diário' : 'pregões diários'}` : 'Histórico indisponível'}</Text>
-              <Text style={styles.dim}>{evidence.priceDate ? `Fechamento mais recente: ${evidence.priceDate}` : 'Sem data de fechamento verificável'}</Text>
-            </View>
-            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
-              <Text style={styles.eyebrow}>NOTÍCIAS / SENTIMENTO</Text>
-              <Text style={styles.metricValue}>{evidence.scoredNews === null ? 'Amostra não informada' : `${evidence.scoredNews} notícia${evidence.scoredNews === 1 ? '' : 's'} pontuada${evidence.scoredNews === 1 ? '' : 's'}`}</Text>
-              <Text style={styles.dim}>{`${evidence.newsCount} exibida${evidence.newsCount === 1 ? '' : 's'} · ${evidence.newsSources} fonte${evidence.newsSources === 1 ? '' : 's'} identificada${evidence.newsSources === 1 ? '' : 's'}`}</Text>
-            </View>
-            <View style={[styles.evidenceTile, { width: desktop ? third - 10 : tablet ? half - 10 : '100%' }]}>
-              <Text style={styles.eyebrow}>COBERTURA DA ANÁLISE</Text>
-              <Text style={styles.metricValue}>{`${evidence.technicalCount} indicadores · ${evidence.fundamentalsCount} fundamentos`}</Text>
-              <Text style={styles.dim}>Valores disponíveis nesta resposta, sem preenchimento estimado.</Text>
-            </View>
-          </View>
-          <Text style={styles.dim}>Amostra de notícias pontuadas pode ser maior que as notícias exibidas. Sem amostra, o sentimento não é uma medição.</Text>
-        </Panel>
-        <Panel title="COMPOSITE SCORE" width={desktop ? quarter : tablet ? half : full} accent={scoreColor}>
-          <View style={styles.scoreCenter}><Svg width={142} height={142} viewBox="0 0 142 142">
-            <Circle cx="71" cy="71" r="57" stroke={T.track} strokeWidth="9" fill="none" />
-            <Circle cx="71" cy="71" r="57" stroke={scoreColor} strokeWidth="9" fill="none"
-              strokeDasharray={`${Math.max(0, Math.min(100, score.final_score)) * 3.58} 358`} strokeLinecap="round" rotation={-90} origin="71,71" />
-          </Svg><View style={styles.scoreText}><CountUp value={score.final_score} color={scoreColor} /><Text style={styles.dim}>/ 100</Text></View></View>
-          <Meter value={score.final_score} color={scoreColor} /><View style={styles.metricRow}><Text style={styles.muted}>Confiança da análise</Text><Text style={styles.metricValue}>{score.confidence}%</Text></View>
-        </Panel>
-        <Panel title="HISTÓRICO / FECHAMENTO DIÁRIO" width={desktop ? half : tablet ? half : full} accent={T.cyan}>
-          <PriceChart history={data.price_history ?? []} currency={data.currency} />
-        </Panel>
-        <Panel title="SIGNAL ENGINE" width={desktop ? quarter : full} accent={color}>
-          <Text style={[styles.signal, { color }]}>{data.recommendation}</Text>
-          <Text style={styles.eyebrow}>RECOMENDAÇÃO DA ANÁLISE</Text>
-          <View style={styles.divider} />
-          <RowMetric label="Tendência" value={score.trend} color={trendColor} />
-          <RowMetric label="Horizonte" value={score.horizon} />
-          <RowMetric label="Confiança" value={`${score.confidence}%`} color={T.cyan} />
-          <Text style={styles.dim}>Sinal obtido da análise existente; não é cotação em streaming.</Text>
-        </Panel>
+      <View style={s.grid}>
+        {overview ? <>
+          <Panel title="SÍNTESE DO MOTOR EXISTENTE"><Text style={[s.signal, { color: tint }]}>{data.recommendation || 'Recomendação indisponível'}</Text>
+            <Metric label="Score composto / 100" value={fmt(score.final_score, 1)} />
+            {finite(score.final_score) ? <Meter value={score.final_score} color={tint} /> : null}
+            <Metric label="Confiança do motor" value={display.confidence == null ? 'Indisponível' : `${display.confidence}%`} />
+            <Text style={s.dim}>Confiança do motor, não probabilidade de lucro. Não é recomendação criada por esta interface.</Text>
+            <Metric label="Tendência / horizonte" value={`${score.trend || 'Indisponível'} / ${score.horizon || 'Indisponível'}`} />
+            <Metric label="Força compradora / vendedora" value={`${fmt(score.buyer_strength,1)} / ${fmt(score.seller_strength,1)}`} />
+          </Panel>
+          <Panel title="COMPONENTES E COBERTURA">{[
+            {label:'Técnica',value:score.subscores.technical,color:T.cyan,note:`${evidence.technicalCount} indicadores disponíveis`},
+            {label:'Valuation',value:score.subscores.valuation,color:T.green,note:`${evidence.fundamentalsCount} fundamentos disponíveis`},
+            {label:'Sentimento',value:display.sentiment,color:T.amber,note:evidence.scoredNews == null ? 'Amostra pontuada não informada' : `${evidence.scoredNews} notícias pontuadas na análise`},
+          ].map(r => <View key={r.label} style={{ gap: 7, marginBottom: 12 }}><Metric label={r.label} value={fmt(r.value,1)} note={r.note} color={r.color} />
+            {finite(r.value) ? <Meter value={r.value} color={r.color} height={5} /> : <Text style={s.dim}>Sem amostra verificável para apresentar uma medição.</Text>}</View>)}
+          </Panel>
+        </> : null}
 
-        <Panel title="FORÇA COMPRADORA" width={desktop ? quarter : tablet ? half : full} accent={T.green}>
-          <Text style={[styles.big, { color: T.green }]}>{score.buyer_strength}</Text><Meter value={score.buyer_strength} color={T.green} />
-        </Panel>
-        <Panel title="FORÇA VENDEDORA" width={desktop ? quarter : tablet ? half : full} accent={T.red}>
-          <Text style={[styles.big, { color: T.red }]}>{score.seller_strength}</Text><Meter value={score.seller_strength} color={T.red} />
-        </Panel>
-        <Panel title="TENDÊNCIA / HORIZONTE" width={desktop ? quarter : tablet ? half : full} accent={trendColor}>
-          <Text style={[styles.big, { color: trendColor, fontSize: 20 }]}>{score.trend}</Text><Text style={styles.muted}>{score.horizon}</Text>
-        </Panel>
-        <Panel title="RSI · 14" width={desktop ? quarter : tablet ? half : full} accent={T.amber}>
-          <Text style={[styles.big, { color: T.amber }]}>{ind.rsi == null ? '—' : ind.rsi.toFixed(1)}</Text>
-          {ind.rsi != null ? <Meter value={ind.rsi} color={T.amber} /> : null}
-          <Text style={styles.dim}>{ind.rsi == null ? 'Dado indisponível' : ind.rsi < 30 ? 'Sobrevendido' : ind.rsi > 70 ? 'Sobrecomprado' : 'Neutro'}</Text>
-        </Panel>
-
-        <Panel title="SCORE DE COMPONENTES" width={desktop ? half : full} accent={T.cyan}>
-          {[{ label: 'TÉCNICA', value: score.subscores.technical, tint: T.cyan },
-            { label: 'VALUATION', value: score.subscores.valuation, tint: T.green },
-            { label: 'SENTIMENTO', value: score.subscores.sentiment, tint: T.amber }].map(item =>
-            <View key={item.label} style={styles.barRow}><View style={styles.metricRow}><Text style={styles.eyebrow}>{item.label}</Text><Text style={[styles.metricValue, { color: item.tint }]}>{item.value == null ? 'Sem notícias' : item.value}</Text></View>
-              {item.value != null ? <Meter value={item.value} color={item.tint} height={6} /> : <Text style={styles.dim}>Nenhuma notícia com texto para medir sentimento.</Text>}</View>)}
-        </Panel>
-        <Panel title="INDICATOR MATRIX · VALORES REAIS" width={desktop ? half : full} accent={T.green}>
-          {indicatorRows.map(row => row.value != null ? <RowMetric key={row.label} label={row.label} value={row.value.toFixed(row.digits)} note={row.note} /> : null)}
-          {ind.rsi == null && ind.ema20 == null && ind.macd == null ? <Text style={styles.dim}>Indisponível (dados insuficientes).</Text> : null}
-        </Panel>
-        {Object.keys(data.technical_votes ?? {}).length > 0 ? <Panel title="VOTOS DOS INDICADORES" width={full} accent={T.amber}>
-          <View style={styles.voteGrid}>{Object.entries(data.technical_votes).map(([name, vote]) => <View key={name} style={styles.vote}>
-            <Text style={styles.eyebrow}>{name}</Text><Text style={[styles.metricValue, { color: vote > 0 ? T.green : vote < 0 ? T.red : T.muted }]}>
-              {vote > 0 ? '▲' : vote < 0 ? '▼' : '—'}  {vote}</Text></View>)}</View>
+        {showChart ? <Panel title="HISTÓRICO · FECHAMENTOS OBSERVADOS" wide>
+          <View style={[s.inline, { justifyContent: 'space-between' }]}><Text style={[s.muted, { flex: 1 }]}>Janela de observação</Text><View style={s.inline}>{[5,10,30].map(n =>
+            <Pressable key={n} accessibilityRole="button" accessibilityState={{ selected: window === n }} accessibilityLabel={`${n} pregões`} onPress={() => setWindow(n)} style={[s.window, window === n && s.activeTab]}><Text style={s.tabText}>{n}D</Text></Pressable>)}</View></View>
+          <PriceChart history={selected.sessions} currency={data.currency} />
+          <View style={s.stats}>{[
+            ['Variação na janela',selected.changePct == null ? 'Indisponível' : `${selected.changePct >= 0 ? '+' : ''}${selected.changePct.toFixed(2)}%`],
+            ['Menor fechamento',money(selected.minClose)],['Maior fechamento',money(selected.maxClose)],['Amostra retornada',`${selected.count} pregões`],
+          ].map(([label,value]) => <View key={label} style={s.stat}><Text style={s.dim}>{label}</Text><Text style={s.value}>{value}</Text></View>)}</View>
+          <Text style={s.dim}>5D / 10D / 30D selecionam até esse número de pregões retornados, não dias corridos. Mínimo e máximo são fechamentos, não a faixa intradiária. Não recalcula RSI ou EMA do motor.</Text>
         </Panel> : null}
-        <Panel title="FUNDAMENTOS" width={desktop ? half : full} accent={T.amber}>
-          {fundamentals.map(row => row.value != null ? <RowMetric key={row.label} label={row.label}
-            value={`${(row.percent ? row.value * 100 : row.value).toFixed(row.digits)}${row.percent ? '%' : ''}`} /> : null)}
-          {fund.pe_ratio == null && fund.roe == null ? <Text style={styles.dim}>Dados indisponíveis.</Text> : null}
-        </Panel>
-        <Panel title="HANDLIV MARKET ANALYSIS" width={desktop ? half : full} accent={T.cyan}>
-          <Text style={styles.body}>{data.ai_explanation}</Text>
-          <View style={styles.divider} /><Text style={styles.eyebrow}>LEITURA DOS INDICADORES</Text>
-          <Text style={[styles.body, { color: T.muted }]}>{data.indicators_explanation}</Text>
-        </Panel>
-        <Panel title="NOTÍCIAS E SENTIMENTO" width={full} accent={T.green}>
-          <Text style={styles.body}>{data.news_summary}</Text>
-          {(data.news_items ?? []).length ? <View style={[styles.grid, { marginTop: 12 }]}>{data.news_items.map((n, i) =>
-            <Pressable key={`${n.url}-${i}`} onPress={() => { if (n.url) void Linking.openURL(n.url); }} accessibilityRole="link"
-              style={[styles.news, { width: desktop ? third - 12 : tablet ? half - 12 : full - 24 }]}>
-              <View style={styles.metricRow}><Text style={styles.eyebrow}>{n.source}</Text>
-                <Text style={[styles.eyebrow, { color: n.sentiment_label === 'positive' ? T.green : n.sentiment_label === 'negative' ? T.red : T.amber }]}>
-                  {n.sentiment_label ?? 'NÃO ANALISADO'}</Text></View>
-              <Text style={styles.newsTitle}>{n.title}</Text>
-              {n.summary ? <Text style={styles.muted}>{n.summary}</Text> : null}
-              <View style={styles.metricRow}><Text style={styles.dim}>{n.published_at ? new Date(n.published_at).toLocaleDateString('pt-BR') : 'Data indisponível'}</Text>
-                {n.sentiment_score != null ? <Text style={styles.dim}>Sentimento: {n.sentiment_score.toFixed(2)}</Text> : null}</View>
-            </Pressable>)}</View> : <Text style={styles.dim}>Sem notícias disponíveis.</Text>}
-        </Panel>
+
+        {showTechnical ? <>
+          <Panel title="LEITURA COMPARADA · EVIDÊNCIAS TÉCNICAS">{factors.map(row => <Metric key={row.label} label={row.label} value={states[row.state]} note={row.detail}
+            color={!row.available ? T.dim : row.state === 'above' ? T.green : row.state === 'below' ? T.red : T.amber} />)}
+            <Text style={s.dim}>Compara valores recebidos no mesmo retrato. Ordem entre EMAs não prova cruzamento; este exige séries de indicadores que a API não retorna. RSI não é sinal de compra/venda isolado.</Text>
+          </Panel>
+          <Panel title="MATRIZ DE INDICADORES · SEM ESTIMATIVAS">{indicatorRows.map(([label,key]) => <Metric key={key} label={label} value={fmt(data.indicators[key], key.startsWith('macd') ? 3 : 2)} />)}
+            <Text style={s.dim}>Calculados pelo backend a partir do histórico diário. O gráfico contém somente a janela devolvida, não toda a base de cálculo.</Text>
+          </Panel>
+          {tab === 'Técnica' ? <Panel title="VOTOS E EXPLICAÇÃO DO MOTOR" wide><View style={s.stats}>{Object.entries(data.technical_votes ?? {}).filter(([,v]) => finite(v)).map(([name,vote]) =>
+            <View key={name} style={s.stat}><Text style={s.dim}>{name}</Text><Text style={[s.value,{color:vote > 0 ? T.green : vote < 0 ? T.red : T.muted}]}>{vote > 0 ? '+' : ''}{vote}</Text></View>)}</View>
+            {!Object.keys(data.technical_votes ?? {}).length ? <Text style={s.dim}>Votos indisponíveis.</Text> : null}<Text style={s.body}>{data.indicators_explanation || 'Explicação indisponível.'}</Text>
+          </Panel> : null}
+        </> : null}
+
+        {tab === 'Fundamentos' ? <>
+          <Panel title="FUNDAMENTOS RETORNADOS">{fundamentals.map(row => { const value = data.fundamentals[row.key]; return <Metric key={row.key} label={row.label}
+            value={finite(value) ? `${fmt(row.percent ? value * 100 : value)}${row.percent ? '%' : ''}` : 'Indisponível'} />; })}
+            <Text style={s.dim}>Não se aplica igualmente a todas as classes de ativos. Campos ausentes permanecem indisponíveis; não são convertidos em zero.</Text>
+          </Panel><Panel title="LIMITES DE COMPARAÇÃO"><Text style={s.body}>Sem período fiscal, timestamp ou comparáveis fornecidos nesta resposta. Não é possível classificar o ativo como caro ou barato apenas por esses múltiplos.</Text>
+            <Metric label="Campos disponíveis" value={String(evidence.fundamentalsCount)} /><Text style={s.dim}>Setor e moeda aparecem no cabeçalho. Não misture múltiplos de empresas com métricas de cripto, forex ou commodities.</Text></Panel>
+        </> : null}
+
+        {overview ? <Panel title="EXPLICAÇÃO DA ANÁLISE" wide><Text style={s.body}>{data.ai_explanation || 'Explicação indisponível.'}</Text><Text style={s.dim}>Texto da análise existente da plataforma; dados ausentes não foram estimados pela interface.</Text></Panel> : null}
+
+        {tab === 'Notícias' ? <>
+          <Panel title="COBERTURA EDITORIAL / SENTIMENTO" wide><Text style={s.body}>{data.news_summary || 'Resumo indisponível.'}</Text>
+            <View style={s.stats}>{[['Notícias exibidas',evidence.newsCount],['Com pontuação exibida',evidence.measuredNews],['Fontes identificadas',evidence.newsSources],['Amostra do motor',evidence.scoredNews ?? 'Não informada']].map(([label,value]) =>
+              <View key={label} style={s.stat}><Text style={s.dim}>{label}</Text><Text style={s.value}>{value}</Text></View>)}</View>
+            <Text style={s.dim}>Última data de publicação retornada: {display.latestNewsDate ?? 'indisponível'}. Notícia sem pontuação não é sentimento neutro. A amostra do motor pode incluir artigos não exibidos.</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}><View style={s.inline}>{['Todas',...sources].map(source => <Pressable key={source} accessibilityRole="button" accessibilityState={{selected:newsFilter === source}} onPress={() => setNewsFilter(source)} style={[s.window,newsFilter === source && s.activeTab]}><Text style={s.tabText}>{source}</Text></Pressable>)}</View></ScrollView>
+          </Panel>
+          {news.length ? news.map((n,index) => <Panel key={`${n.url}-${index}`} title={n.source || 'FONTE NÃO INFORMADA'}><Text style={s.newsTitle}>{n.title}</Text>{n.summary ? <Text style={s.muted}>{n.summary}</Text> : null}
+            <Metric label="Publicação" value={displayEvidence({news_items:[n]}).latestNewsDate ?? 'Indisponível'} />
+            <Metric label="Sentimento do texto" value={finite(n.sentiment_score) ? `${n.sentiment_label || 'Pontuado'} · ${n.sentiment_score.toFixed(2)}` : 'Não pontuado'} />
+            {/^(https?):\/\//i.test(n.url) ? <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL(n.url); }} style={s.button}><Text style={[s.buttonText,{color:T.cyan}]}>Ler na fonte</Text><Ionicons name="open-outline" size={14} color={T.cyan} /></Pressable> : <Text style={s.dim}>Link indisponível.</Text>}
+          </Panel>) : <Panel title="SEM ARTIGOS NESTA SELEÇÃO" wide><Text style={s.muted}>Nenhuma notícia retornada para este filtro. Não implica sentimento neutro.</Text></Panel>}
+        </> : null}
+
+        {tab === 'Evidências' ? <>
+          <Panel title="TRILHA DE EVIDÊNCIAS / DADOS"><Metric label="Preço" value="Fechamento diário" note={evidence.priceDate ?? 'Sem data verificável'} />
+            <Metric label="Histórico retornado" value={`${evidence.priceBars} pregões válidos`} />
+            <Metric label="Indicadores disponíveis" value={`${evidence.technicalCount}`} />
+            <Metric label="Fundamentos disponíveis" value={`${evidence.fundamentalsCount}`} />
+            <Metric label="Amostra de sentimento" value={evidence.scoredNews == null ? 'Não informada' : `${evidence.scoredNews} pontuadas`} />
+            <Metric label="Confiança do motor" value={display.confidence == null ? 'Indisponível' : `${display.confidence}%`} />
+            <Text style={s.dim}>Confiança do motor, não probabilidade de lucro. Cobertura indica valores presentes, não qualidade garantida ou sucesso da estratégia.</Text>
+          </Panel>
+          <Panel title="O QUE ESTA RESPOSTA NÃO INFORMA"><Text style={s.body}>Provedor não informado · timestamp de cálculo não informado · atraso de cotação não informado · período fiscal não informado.</Text>
+            <Text style={s.muted}>A atualização consulta novamente o backend; não comprova que o fornecedor tem uma observação nova. Não inferimos mercado aberto ou fechado a partir do relógio do dispositivo.</Text>
+            <Text style={s.muted}>Comparações técnicas são relações entre valores, não detecção de eventos de cruzamento. Mudanças na janela do gráfico não alteram scores do backend.</Text>
+            <Text style={s.dim}>Fonte contratual: /assets/{data.symbol}/live-analysis. Notícias têm fontes próprias exibidas em cada artigo.</Text>
+          </Panel>
+        </> : null}
       </View>
-      <View style={styles.footer}><Pressable onPress={onToggle} style={styles.action}><Ionicons name={inWatchlist ? 'star' : 'star-outline'} size={16} color={T.amber} /><Text style={styles.actionText}>{inWatchlist ? 'Na watchlist' : 'Favoritar'}</Text></Pressable>
-        <Pressable onPress={onBack} style={styles.action}><Text style={styles.actionText}>← Voltar</Text></Pressable></View>
+      <Text style={[s.dim,{marginTop:20}]}>HANDLIV · Decisões exigem contexto e gestão de risco. Este workspace não envia ordens.</Text>
     </View>
   </ScrollView>;
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: T.bg }, content: { paddingBottom: 48, alignItems: 'center' }, shell: { maxWidth: 1376 },
-  topline: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, paddingTop: 19, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: T.line },
-  inline: { flexDirection: 'row', alignItems: 'center', gap: 9 }, brandMark: { width: 31, height: 31, backgroundColor: T.green, alignItems: 'center', justifyContent: 'center', borderRadius: 4 }, brandLetter: { fontSize: 21, fontWeight: '900', color: T.bg },
-  eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.25, color: T.cyan, fontFamily: mono }, muted: { fontSize: 12, lineHeight: 19, color: T.muted }, dim: { fontSize: 11, lineHeight: 17, color: T.dim },
-  iconButton: { borderWidth: 1, borderColor: T.line, padding: 7, borderRadius: 4, marginLeft: 6 },
-  assetHead: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 15, paddingVertical: 22 }, title: { fontSize: 29, fontWeight: '800', color: T.ink, marginVertical: 5 }, price: { fontSize: 27, fontWeight: '800', color: T.ink, fontFamily: mono },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, panel: { borderWidth: 1, borderColor: T.line, backgroundColor: T.panel, borderRadius: 5, padding: 15, minWidth: 0, overflow: 'hidden' }, panelHead: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 }, headMark: { width: 4, height: 12, borderRadius: 2 }, panelTitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1.3, color: T.muted, fontFamily: mono },
-  evidenceGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
-  evidenceTile: { minWidth: 0, gap: 7, padding: 12, backgroundColor: T.bg, borderWidth: 1, borderColor: T.line, borderRadius: 7 },
-  scoreCenter: { alignItems: 'center', justifyContent: 'center', height: 150 }, scoreText: { position: 'absolute', alignItems: 'center' },
-  metricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, paddingVertical: 7 }, metricValue: { fontSize: 14, fontWeight: '700', fontFamily: mono, color: T.ink, textAlign: 'right' },
-  signal: { fontSize: 24, fontWeight: '900', lineHeight: 30, marginVertical: 10 }, divider: { height: 1, backgroundColor: T.line, marginVertical: 12 }, big: { fontSize: 28, fontWeight: '800', fontFamily: mono, marginBottom: 9 }, barRow: { marginBottom: 9 },
-  voteGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, vote: { minWidth: 115, flexGrow: 1, padding: 10, gap: 9, borderWidth: 1, borderColor: T.line, backgroundColor: T.bg, borderRadius: 4 },
-  body: { color: T.ink, fontSize: 13, lineHeight: 21 }, news: { borderWidth: 1, borderColor: T.line, backgroundColor: T.bg, borderRadius: 4, padding: 12, gap: 6 }, newsTitle: { color: T.ink, fontSize: 14, lineHeight: 19, fontWeight: '700' },
-  footer: { flexDirection: 'row', gap: 10, marginTop: 14 }, action: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderWidth: 1, borderColor: T.line, borderRadius: 4, paddingVertical: 12, paddingHorizontal: 18 }, actionText: { color: T.ink, fontWeight: '700', fontSize: 12 },
+const s = StyleSheet.create({
+  root:{flex:1,backgroundColor:T.bg}, content:{paddingHorizontal:24,paddingBottom:40,alignItems:'center'}, shell:{width:'100%',maxWidth:1376},
+  toolbar:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:12,paddingVertical:18,borderBottomWidth:1,borderColor:T.line},
+  inline:{flexDirection:'row',alignItems:'center',gap:8,flexWrap:'wrap'}, button:{flexDirection:'row',gap:8,alignItems:'center',padding:10,borderRadius:7,borderWidth:1,borderColor:T.line}, buttonText:{color:T.ink,fontSize:12,fontWeight:'600'},
+  picker:{marginTop:16}, pickerBody:{backgroundColor:T.panel,borderWidth:1,borderColor:T.line,borderRadius:10,padding:14,gap:12,marginTop:8}, input:{color:T.ink,fontSize:14,borderWidth:1,borderColor:T.line,borderRadius:7,padding:12}, pickerRow:{flexDirection:'row',gap:12,alignItems:'center',paddingVertical:9,borderBottomWidth:1,borderColor:T.line},
+  assetHeader:{flexDirection:'row',alignItems:'center',gap:24,paddingVertical:24}, symbol:{color:T.cyan,fontFamily:'monospace',fontWeight:'700',fontSize:17}, title:{color:T.ink,fontSize:28,fontWeight:'800'}, price:{color:T.ink,fontFamily:'monospace',fontSize:32,fontWeight:'800'},
+  kicker:{color:T.cyan,fontFamily:'monospace',fontSize:11,fontWeight:'700',letterSpacing:1.1}, muted:{color:T.muted,fontSize:13,lineHeight:20}, dim:{color:T.dim,fontSize:12,lineHeight:19}, value:{color:T.ink,fontFamily:'monospace',fontSize:14,fontWeight:'700',textAlign:'right'},
+  provenance:{flexDirection:'row',gap:10,backgroundColor:T.panel,borderRadius:8,padding:12,borderWidth:1,borderColor:T.line}, tabScroll:{marginVertical:18,flexGrow:0}, tab:{flexDirection:'row',alignItems:'center',gap:8,paddingHorizontal:14,paddingVertical:12,borderBottomWidth:2,borderBottomColor:'transparent'}, activeTab:{backgroundColor:T.track,borderColor:T.cyan,borderBottomColor:T.cyan}, tabText:{color:T.muted,fontSize:13,fontWeight:'600'},
+  grid:{flexDirection:'row',flexWrap:'wrap',gap:14,alignItems:'stretch'}, panel:{flexGrow:1,flexShrink:1,flexBasis:410,minWidth:0,borderWidth:1,borderColor:T.line,borderRadius:11,backgroundColor:T.panel,padding:18,gap:12},
+  metric:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:12,paddingVertical:8,borderBottomWidth:1,borderColor:T.line}, signal:{fontSize:25,lineHeight:32,fontWeight:'800'}, body:{color:T.ink,fontSize:14,lineHeight:23}, newsTitle:{color:T.ink,fontWeight:'700',fontSize:18,lineHeight:25},
+  window:{paddingHorizontal:12,paddingVertical:10,borderRadius:6,borderWidth:1,borderColor:T.line}, stats:{flexDirection:'row',flexWrap:'wrap',gap:10}, stat:{flexGrow:1,flexBasis:160,minWidth:0,padding:12,backgroundColor:T.bg,borderWidth:1,borderColor:T.line,borderRadius:7,gap:7},
 });

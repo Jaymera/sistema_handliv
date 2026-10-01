@@ -3,7 +3,8 @@ import { useIsFocused } from '@react-navigation/native';
 import { PanResponder, View } from 'react-native';
 import Svg, { Circle, Ellipse, G, Line, Polygon, Rect, Text } from 'react-native-svg';
 import type { FloorSceneProps, FloorStation } from './types';
-import { Camera, agentAppearance, avatarGesture, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, traderPose, zoomCamera } from './sceneGeometry';
+import { officeShapes } from './officeDecor';
+import { Camera, dogPose, officeCoworkers, agentAppearance, avatarGesture, avatarVisible, fitCamera, hitAgent, hitStation, iso, layoutScene, money, traderPose, zoomCamera } from './sceneGeometry';
 
 const INK='#E9EFF9', MUTED='#8498B7', GREEN='#16D39A';
 const Station = memo(function Station({station:s,x,y,selected,demo}:{station:FloorStation;x:number;y:number;selected:boolean;demo:boolean}) {
@@ -46,14 +47,16 @@ const Avatar = memo(function Avatar({id,name,x,y,pose,now,reducedMotion}:{id:str
     <Line x1={12} y1={-22} x2={gesture.right.x} y2={gesture.right.y} stroke={appearance.jacket} strokeWidth={8}/>
     {[gesture.left,gesture.right].map((p,i)=><Circle key={i} cx={p.x} cy={p.y} r={4} fill={appearance.skin}/>)}
     {gesture.prop==='cup'&&<><Rect x={gesture.right.x-5} y={gesture.right.y-8} width={11} height={11} rx={3} fill="#F3EADF"/><Circle cx={gesture.right.x+7} cy={gesture.right.y-3} r={4} fill="none" stroke="#F3EADF" strokeWidth={2}/></>}
+    {gesture.prop==='ball'&&<Circle cx={gesture.left.x} cy={gesture.left.y} r={5} fill="#F4C35C"/>}
     {gesture.prop==='phone'&&<><Rect x={gesture.right.x-5} y={gesture.right.y-11} width={10} height={15} rx={2} fill="#101725"/><Rect x={gesture.right.x-3} y={gesture.right.y-9} width={6} height={10} fill="#91BADA"/></>}
     {gesture.prop==='cue'&&<Line x1={gesture.left.x-20} y1={gesture.left.y+12} x2={gesture.right.x+24} y2={gesture.right.y-16} stroke="#D7B17A" strokeWidth={3}/>}
     <Polygon points="-8,-31 0,-24 8,-31" fill="#D9E4ED"/><Line x1={0} y1={-24} x2={0} y2={3} stroke="#34445C" strokeWidth={2}/>
     <Ellipse cx={-1} cy={-39+breath} rx={12} ry={14} fill={appearance.skin}/>
     <Ellipse cx={-2} cy={-46+breath} rx={12} ry={8} fill={appearance.hair}/>
     <Line x1={pose.facing==='left'?-9:8} y1={-38} x2={pose.facing==='left'?-9:8} y2={-33} stroke="#1B2432" strokeWidth={2}/>
-    {pose.activity!=='desk'&&<>{!pose.walking&&<><Rect x={-35} y={-94} width={70} height={17} rx={5} fill="#213F55"/><Text x={-29} y={-82} fill="#B8D9E8" fontSize={9}>{({coffee:'CAFÉ',chat:'CONVERSA',meeting:'REUNIÃO',rest:'PAUSA',pool:'SINUCA'} as Record<string,string>)[pose.activity]}</Text></>}<Rect x={-41} y={-72} width={82} height={18} rx={5} fill="#0B1527"/>
-      <Text x={-35} y={-59} fill={INK} fontSize={9} fontWeight="700">{name.length>11?name.slice(0,10)+'…':name}</Text></>}
+    {pose.activity==='chat'&&<><Rect x={22} y={-66} width={34} height={17} rx={6} fill="#D6E5E7"/><Text x={29} y={-53} fontSize={16} fill="#365568">···</Text></>}
+    {pose.activity!=='desk'&&<>{!pose.walking&&<><Rect x={-35} y={-94} width={70} height={17} rx={5} fill="#213F55"/><Text x={-29} y={-82} fill="#B8D9E8" fontSize={9}>{({coffee:'CAFÉ',chat:'CONVERSA',meeting:'REUNIÃO',rest:'PAUSA',pool:'SINUCA',dog:'CARINHO / PLAY'} as Record<string,string>)[pose.activity]}</Text></>}<Rect x={-41} y={-72} width={82} height={18} rx={5} fill="#0B1527"/>
+      <Text x={-35} y={-59} fill={INK} fontSize={9} fontWeight="700">{name.length>14?name.slice(0,13)+'…':name}</Text></>}
   </G>;
 });
 
@@ -63,7 +66,7 @@ function FloorScene(props:FloorSceneProps) {
   const focused=useIsFocused();
   useEffect(()=>{if(props.reducedMotion||!focused)return;const timer=setInterval(()=>setNow(Date.now()),50);return()=>clearInterval(timer);},[props.reducedMotion,focused]);
   const layout=useMemo(()=>layoutScene(props.stations),[props.stations]);
-  const signature=layout.stations.map(s=>s.id).join('\0');
+  const signature=layout.stations.map(s=>s.id+':'+s.room).join('\0');
   const [camera,setCamera]=useState<Camera>({x:0,y:0,scale:1});
   const live=useRef({props,layout,camera,size});live.current={props,layout,camera,size};
   const gesture=useRef({camera,dragged:false,distance:0});
@@ -102,7 +105,7 @@ function FloorScene(props:FloorSceneProps) {
         <Polygon points={floorPoints} fill="#172439" stroke="#344763"/>
         {Array.from({length:layout.cols*2+1},(_,i)=>{const p=iso(i*120,0),q=iso(i*120,layout.rows*240);return <Line key={`x${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="#22324A"/>;})}
         {Array.from({length:layout.rows*2+1},(_,i)=>{const p=iso(0,i*120),q=iso(layout.cols*240,i*120);return <Line key={`y${i}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="#22324A"/>;})}
-        {['TRADING FLOOR','RISK','MACRO','NEWS','AI LAB'].map((s,i)=>{const p=iso((i+.5)*layout.cols*240/5,0);return <Text key={s} transform={`translate(${p.x} ${p.y-51}) rotate(26.565)`} x={-45} fill={i===0?GREEN:'#93ACD0'} fontSize={12} fontWeight="700">{s}</Text>;})}
+        {officeShapes(layout).map((s,i)=>s.type==='poly'?<Polygon key={i} points={s.points.map(p=>`${p.x},${p.y}`).join(' ')} fill={s.fill} stroke={s.stroke}/>:s.type==='rect'?<Rect key={i} x={s.x} y={s.y} width={s.width} height={s.height} rx={s.radius} fill={s.fill}/>:s.type==='line'?<Line key={i} x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y} stroke={s.stroke} strokeWidth={s.width}/>:s.type==='text'?<Text key={i} x={s.x} y={s.y} fontSize={s.size} fontWeight="700" fill={s.fill}>{s.text}</Text>:<Ellipse key={i} cx={s.x} cy={s.y} rx={s.rx} ry={s.ry} fill={s.fill}/>)}
         <Rect x={-244} y={-214} width={488} height={164} rx={12} fill="#060E1B"/><Rect x={-244} y={-214} width={4} height={164} fill={GREEN}/>
         <Text x={-220} y={-183} fill={INK} fontSize={22} fontWeight="800">HANDLIV</Text><Text x={-86} y={-183} fill={GREEN} fontSize={12}>TRADING FLOOR</Text>
         <Text x={-220} y={-161} fill={MUTED} fontSize={9}>{props.demo?'AMBIENTE DEMONSTRATIVO':'CENTRO DE OPERAÇÕES'}</Text>
@@ -118,9 +121,9 @@ function FloorScene(props:FloorSceneProps) {
           :<><Rect x={-83} y={-27} width={166} height={64} rx={23} fill="#576E83"/>{[-56,-18,20,58].map(x=><G key={x}><Rect x={x} y={-44} width={19} height={12} rx={5} fill="#243D56"/><Rect x={x} y={39} width={19} height={12} rx={5} fill="#243D56"/></G>)}<Text x={-29} y={60} fill={MUTED} fontSize={10}>REUNIÃO</Text></>}
         </G>)}
         {people.map(({point,station,pose})=><Avatar key={point.id} id={point.id} name={station.name} x={point.x} y={point.y} pose={pose} now={now} reducedMotion={props.reducedMotion}/>)}
-        {(()=>{const left=layout.amenities[0],right=layout.amenities[2],phase=props.reducedMotion?.5:(now%18000)/18000,step=phase<.5?phase*2:2-phase*2;
-          const dir=phase<.5?1:-1,stride=props.reducedMotion?0:Math.sin(now/175)*4;
-          return <G transform={`translate(${left.x+(right.x-left.x)*step} ${left.y+(right.y-left.y)*step+85})`}><Ellipse cx={0} cy={0} rx={16} ry={9} fill="#A87852"/><Circle cx={dir*15} cy={-8} r={8} fill="#A87852"/><Polygon points={`${dir*10},-13 ${dir*7},-24 ${dir*17},-15`} fill="#79543C"/><Circle cx={dir*19} cy={-10} r={2} fill="#101725"/><Circle cx={dir*23} cy={-5} r={2} fill="#101725"/><Line x1={-10} y1={6} x2={-10+stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={10} y1={6} x2={10-stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={-dir*14} y1={-2} x2={-dir*23} y2={-15+(props.reducedMotion?0:Math.sin(now/220)*3)} stroke="#A87852" strokeWidth={4}/></G>;})()}
+        {officeCoworkers(props.stations,layout,now,props.reducedMotion).map(peer=><Avatar key={peer.id} id={peer.id} name={peer.name} x={peer.x} y={peer.y} pose={peer.pose} now={now} reducedMotion={props.reducedMotion}/>)}
+        {(()=>{const dog=dogPose(props.stations,layout,now,props.reducedMotion),dir=-1;
+          return <G transform={`translate(${dog.x} ${dog.y-dog.bounce}) scale(1.3)`}><Ellipse cx={0} cy={0} rx={16} ry={9} fill="#A87852"/><Circle cx={dir*15} cy={-8} r={8} fill="#A87852"/><Polygon points={`${dir*10},-13 ${dir*7},-24 ${dir*17},-15`} fill="#79543C"/><Circle cx={dir*19} cy={-10} r={2} fill="#101725"/><Circle cx={dir*23} cy={-5} r={2} fill="#101725"/><Line x1={-10} y1={6} x2={-10} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={10} y1={6} x2={10} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={14} y1={-2} x2={23} y2={-15+dog.wag} stroke="#A87852" strokeWidth={4}/>{dog.visitorId&&<><Text x={-6} y={-32} fill="#F2B485" fontSize={18}>♥</Text><Circle cx={-30} cy={10} r={5} fill="#F4C35C"/></>}</G>;})()}
       </G>
     </Svg>
   </View>;

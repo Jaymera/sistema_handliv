@@ -13,7 +13,7 @@ test('real browser: resize, selection, drag suppression, wheel and commands',asy
     await page.setContent('<div id="root" style="width:1100px;height:550px"></div>');
     await page.addScriptTag({content:fs.readFileSync(require.resolve('react').replace(/index\.js$/,'umd/react.development.js'),'utf8')});
     await page.addScriptTag({content:fs.readFileSync(require.resolve('react-dom').replace(/index\.js$/,'umd/react-dom.development.js'),'utf8')});
-    await page.addScriptTag({content:`window.geometry={};(function(exports){${compile('sceneGeometry.ts')}})(window.geometry);window.renderer={};(function(exports,require){${compile('FloorScene.web.tsx')}})(window.renderer,n=>n==='react'?React:window.geometry);`});
+    await page.addScriptTag({content:`window.rooms={};(function(exports){${compile('symbolRooms.ts')}})(window.rooms);window.geometry={};(function(exports,require){${compile('sceneGeometry.ts')}})(window.geometry,()=>window.rooms);window.decor={};(function(exports,require){${compile('officeDecor.ts')}})(window.decor,()=>window.geometry);window.renderer={};(function(exports,require){${compile('FloorScene.web.tsx')}})(window.renderer,n=>n==='react'?React:n==='./officeDecor'?window.decor:window.geometry);`});
     await page.evaluate(()=>{
       window.paintTimes=[];const clear=CanvasRenderingContext2D.prototype.clearRect;
       CanvasRenderingContext2D.prototype.clearRect=function(...args){window.paintTimes.push(performance.now());return clear.apply(this,args);};
@@ -51,5 +51,16 @@ test('real browser: resize, selection, drag suppression, wheel and commands',asy
     await page.waitForFunction(()=>JSON.parse(document.querySelector('canvas').dataset.stationTargets).length===120);
     await page.screenshot({path:path.join(process.env.TEMP||process.env.TMP||'.','handliv-floor-renderer.png')});
     console.log('screenshot',path.join(process.env.TEMP||process.env.TMP||'.','handliv-floor-renderer.png'));
+    for(const count of [1,3,20,150]){
+      await page.evaluate(count=>{window.props={...window.props,stations:Array.from({length:count},(_,i)=>({id:'scene'+i,name:'Magic '+(100+i),symbol:['XAUUSD','EURUSD','AAPL','BTCUSD','unknown'][i%5],currency:'USD',profitDay:null,status:i===1?'POSIÇÃO ABERTA':'AGUARDANDO'})),command:{type:'fit',seq:count+10}};window.root.render(React.createElement(window.renderer.default,window.props));},count);
+      await page.waitForFunction(count=>JSON.parse(document.querySelector('canvas').dataset.stationTargets).length===count,count);
+      await page.screenshot({path:path.join(process.env.TEMP||process.env.TMP||'.',`handliv-rooms-${count}.png`)});
+      console.log('room screenshot',path.join(process.env.TEMP||process.env.TMP||'.',`handliv-rooms-${count}.png`));
+    }
+    await page.evaluate(()=>{window.props={...window.props,stations:[{id:'solo',name:'Magic 101',symbol:'EURUSD',currency:'USD',profitDay:null,status:'AGUARDANDO'}],command:{type:'fit',seq:1000}};window.root.render(React.createElement(window.renderer.default,window.props));});
+    await page.waitForFunction(()=>JSON.parse(document.querySelector('canvas').dataset.stationTargets).length===1);
+    await page.evaluate(()=>{const canvas=document.querySelector('canvas'),g=window.geometry,layout=g.layoutScene(window.props.stations),desk=layout.stations[0];let time=0;for(;time<1000000;time+=100)if(g.traderPose('AGUARDANDO',time,desk.id,false,desk,layout).activity==='dog')break;window.renderer.drawFloorScene(canvas.getContext('2d'),{...window.props,reducedMotion:false},layout,g.fitCamera(layout.bounds,600,550),600,550,time);});
+    await page.screenshot({path:path.join(process.env.TEMP||process.env.TMP||'.','handliv-dog-interaction.png')});
+    assert.deepEqual(errors,[]);
   }finally{await browser.close();}
 });

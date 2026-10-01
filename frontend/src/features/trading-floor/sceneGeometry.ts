@@ -39,14 +39,14 @@ export function agentAppearance(id: string) {
     hair: ['#252332', '#42362F', '#322B50', '#594232'][Math.floor(seed / 20) % 4],
   };
 }
-type SocialArea = 'pool' | 'coffee' | 'meeting' | 'chat' | 'rest';
+type SocialArea = 'pool' | 'coffee' | 'meeting' | 'chat' | 'rest' | 'dog';
 type Pose = { x: number; y: number; walking: boolean; stride: number; facing: 'left' | 'right'; activity: 'desk' | 'walking' | SocialArea };
 /** Shared Canvas/SVG body language, independent of financial telemetry. */
 export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean) {
   const wave = reducedMotion ? 0 : Math.sin(now / 420);
   const step = reducedMotion ? 0 : pose.stride;
   const left = { x: -24, y: -16 }, right = { x: 23, y: -16 };
-  let prop: 'cup' | 'phone' | 'cue' | null = null;
+  let prop: 'cup' | 'phone' | 'cue' | 'ball' | null = null;
   let lean = 0;
   switch (pose.activity) {
     case 'walking': left.y += step * 1.4; right.y -= step * 1.4; lean = step * .15; break;
@@ -54,6 +54,7 @@ export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean) {
     case 'coffee': right.x = 15; right.y = -31 + wave * 6; prop = 'cup'; break;
     case 'chat': case 'meeting': right.x = 28 + wave * 4; right.y = -30 + wave * 8; left.y = -18 - wave * 3; break;
     case 'rest': right.x = 18; right.y = -28; left.x = -10; left.y = -23; lean = -3; prop = 'phone'; break;
+    case 'dog': right.x = 31; right.y = -2 + wave * 5; left.x = -7; left.y = -12; lean = 7; prop = 'ball'; break;
     case 'pool': right.x = 32; right.y = -17 + wave * 2; left.x = -28; left.y = -13; lean = 4; prop = 'cue'; break;
   }
   return { left, right, prop, lean };
@@ -89,16 +90,8 @@ export function traderPose(status: string, now: number, id: string, reducedMotio
   }
   const index = layout.stations.findIndex(s => s.id === id);
   if (index < 0) return atDesk;
-  const row = Math.floor(index / layout.cols), col = index % layout.cols;
-  // Original Handliv choreography, inspired by room/corridor routing in AgentFleet.
-  // All feet stay in column seams and the front social aisle; no table crossings.
-  const seam = (col + 1) * 240, deskY = (row + .5) * 240;
-  const aisleY = (layout.deskRows + 1) * 240;
-  const routes = layout.amenities.map((area, i) => {
-    const destinationX = (i + .5) * layout.cols * 240 / 3;
-    const end = iso(destinationX + (seed % 5 - 2) * 22, aisleY - 36);
-    return [desk, iso(seam, deskY), iso(seam, aisleY), iso(destinationX, aisleY), end];
-  });
+  const activities: SocialArea[]=['dog','coffee','meeting',layout.stations.length>1?'chat':'dog','rest','pool'];
+  const routes=activities.map(activity=>routeGrid(id,layout,activity).map(p=>iso(p.x,p.y)));
   const lengths = routes.map(points => points.slice(1).reduce((total, p, i) => total + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0));
   // A common period keeps destinations changing only when safely back at the desk.
   const trip = Math.max(3500, Math.max(...lengths) / 105 * 1000);
@@ -106,21 +99,39 @@ export function traderPose(status: string, now: number, id: string, reducedMotio
   const cycle = deskPause * 2 + trip * 2 + pause;
   const absolute = now + seed % Math.floor(cycle);
   const round = Math.floor(absolute / cycle);
-  const routine = ((round + seed % 5) % 5 + 5) % 5;
-  const activity: SocialArea = (['pool', 'coffee', 'meeting', 'chat', 'rest'] as const)[routine];
-  const destinationIndex = activity === 'pool' || activity === 'rest' ? 0 : activity === 'meeting' ? 2 : 1;
-  const points = routes[destinationIndex];
+  const routine = ((round + seed % 6) % 6 + 6) % 6;
+  const activity: SocialArea = activities[routine];
+  const points = routes[routine];
   const t = ((absolute % cycle) + cycle) % cycle;
   if (t < deskPause || t >= deskPause + trip * 2 + pause) return atDesk;
   if (t >= deskPause + trip && t < deskPause + trip + pause) {
     const p = points[points.length - 1];
-    return { x: p.x - desk.x, y: p.y - desk.y, walking: false, stride: 0, facing: seed % 2 ? 'left' : 'right', activity };
+    return { x: p.x - desk.x, y: p.y - desk.y, walking: false, stride: 0, facing: activity === 'chat' || activity === 'dog' ? 'right' : seed % 2 ? 'left' : 'right', activity };
   }
   const outgoing = t < deskPause + trip;
   const part = outgoing ? (t - deskPause) / trip : 1 - (t - deskPause - trip - pause) / trip;
   const { point, facing } = along(points, part);
   return { x: point.x - desk.x, y: point.y - desk.y, walking: true,
     stride: Math.sin(now / 145) * 5, facing: outgoing ? facing : facing === 'left' ? 'right' : 'left', activity: 'walking' };
+}
+/** A clearly labeled decorative colleague, NOT an EA identity or chat telemetry. */
+export function officeCoworkers(stations: readonly {id:string;status:string}[],layout: ReturnType<typeof layoutScene>,now:number,reducedMotion:boolean) {
+  if(reducedMotion || layout.stations.length < 2)return [];
+  const visitor=layout.stations.find(d=>stations.some(s=>s.id===d.id&&s.status==='AGUARDANDO')&&traderPose('AGUARDANDO',now,d.id,false,d,layout).activity==='chat');
+  if(!visitor)return [];
+  const p=traderPose('AGUARDANDO',now,visitor.id,false,visitor,layout);
+  return [{id:'decor-colleague',name:'COLEGA VISUAL',decorative:true,visitorId:visitor.id,
+    x:visitor.x+p.x+72,y:visitor.y+p.y,pose:{...atDesk,facing:'left' as const,activity:'chat' as const}}];
+}
+/** Dog stays in its lounge and responds only to an actually rendered waiting visitor. */
+export function dogPose(stations: readonly {id:string;status:string}[],layout: ReturnType<typeof layoutScene>,now:number,reducedMotion:boolean) {
+  const visitor=reducedMotion?undefined:layout.stations.find(d=>{
+    const status=stations.find(s=>s.id===d.id)?.status;
+    return status==='AGUARDANDO'&&traderPose(status,now,d.id,false,d,layout).activity==='dog';
+  });
+  return {...layout.dogHome,visitorId:visitor?.id??null,
+    facing:'left' as const, wag:reducedMotion?0:Math.sin(now/(visitor?100:350))* (visitor?8:2),
+    bounce:visitor?Math.max(0,Math.sin(now/280))*3:0};
 }
 /** Avatar targeting follows its visual position; no backend mutation or fake presence. */
 export function hitAgent(pointer: Point, stations: readonly { id: string; status: string }[],
@@ -137,17 +148,68 @@ export function hitAgent(pointer: Point, stations: readonly { id: string; status
   }
   return closest;
 }
-export function layoutScene(items: readonly { id: string }[]) {
-  const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));
-  const cols = Math.max(3, Math.ceil(Math.sqrt(Math.max(items.length, 1) * 1.4)));
-  const deskRows = Math.max(1, Math.ceil(items.length / cols));
-  const rows = deskRows + 2; // lounge plus circulation for the moving dog
-  const stations = sorted.map((s, i) => ({ id: s.id, ...iso((i % cols + .5) * 240, (Math.floor(i / cols) + .5) * 240) }));
-  const amenities = (['pool', 'coffee', 'meeting'] as const).map((kind, i) => {
-    const gridY = (deskRows + .5) * 240;
-    return { kind, gridY, ...iso(((i + .5) * cols / 3) * 240, gridY) };
+/** Axis-aligned walkable grid route, shared by every renderer and pointer target. */
+export function routeGrid(id: string, layout: ReturnType<typeof layoutScene>, activity: string): Point[] {
+  const desk=layout.stations.find(s=>s.id===id);
+  if(!desk)return [];
+  const room=layout.rooms.find(r=>r.kind===desk.room)!;
+  const doorX=room.x+room.width/2;
+  const destinationIndex=activity==='pool'||activity==='rest'||activity==='dog'?0:activity==='meeting'?2:1;
+  const area=layout.amenities[destinationIndex];
+  const targetX=activity==='dog'?layout.worldWidth/6-70:area.gridX;
+  const bottom=room.y+room.height;
+  const exitY=room.y===0?Math.max(...layout.rooms.slice(0,3).map(r=>r.height))+80:layout.corridorY;
+  const points=[{x:desk.gridX,y:desk.gridY},{x:desk.gridX+120,y:desk.gridY},
+    {x:desk.gridX+120,y:bottom-30},{x:doorX,y:bottom-30},
+    {x:doorX,y:bottom},{x:doorX,y:exitY}];
+  if(room.y===0)points.push({x:layout.worldWidth-80,y:exitY},{x:layout.worldWidth-80,y:layout.corridorY});
+  points.push({x:targetX,y:layout.corridorY},{x:targetX,y:layout.corridorY+120});
+  return points;
+}
+export { stationRoom } from './symbolRooms';
+import { stationRoom, RoomKind } from './symbolRooms';
+export function layoutScene(items: readonly { id: string; symbol?: string | null; assetType?: string | null }[]) {
+  const sorted = [...items].sort((a,b)=>a.id.localeCompare(b.id));
+  const kinds: RoomKind[] = ['Commodities','Forex','Ações','Crypto','Outros'];
+  let offset = 0;
+  const rooms = kinds.map((kind,i)=>{
+    const members=sorted.filter(s=>stationRoom(s)===kind);
+    const cols=Math.max(1,Math.ceil(Math.sqrt(members.length*1.4)));
+    const rows=Math.max(1,Math.ceil(members.length/cols));
+    const room={kind,x:offset,y:0,width:Math.max(300,cols*240+80),height:members.length?rows*240+100:220,cols,rows,color:['#A98452','#467CA8','#4B8C7C','#8064AE','#617088'][i],members};
+    offset+=room.width;
+    return room;
   });
-  const floor = [iso(0, 0), iso(cols * 240, 0), iso(cols * 240, rows * 240), iso(0, rows * 240)];
-  const bounds = { x: floor[3].x - 70, y: -230, width: floor[1].x - floor[3].x + 140, height: floor[2].y + 330 };
-  return { stations, amenities, floor, bounds, cols, rows, deskRows };
+  const topHeight=Math.max(...rooms.slice(0,3).map(r=>r.height));
+  const firstWidth=rooms.slice(0,3).reduce((sum,r)=>sum+r.width,0);
+  let lowerX=0;
+  rooms.slice(3).forEach(r=>{r.x=lowerX;r.y=topHeight+180;lowerX+=r.width;});
+  offset=Math.max(firstWidth,lowerX)+160;
+  const roomHeight=Math.max(...rooms.map(r=>r.y+r.height));
+  const corridorY=roomHeight+80;
+  const stations=rooms.flatMap(r=>r.members.map((s,i)=>{
+    const gridX=r.x+40+(i%r.cols+.5)*240,gridY=r.y+(Math.floor(i/r.cols)+.5)*240;
+    return {id:s.id,room:r.kind,gridX,gridY,...iso(gridX,gridY)};
+  }));
+  const amenities=(['pool','coffee','meeting'] as const).map((kind,i)=>{
+    const gridX=(i+.5)*offset/3,gridY=corridorY+240;
+    return {kind,gridX,gridY,...iso(gridX,gridY)};
+  });
+  const walls=rooms.flatMap(r=>{
+    const doorX=r.x+r.width/2;
+    return [{a:{x:r.x,y:r.y},b:{x:r.x,y:r.y+r.height}},
+      {a:{x:r.x,y:r.y},b:{x:r.x+r.width,y:r.y}},
+      {a:{x:r.x+r.width,y:r.y},b:{x:r.x+r.width,y:r.y+r.height}},
+      {a:{x:r.x,y:r.y+r.height},b:{x:doorX-55,y:r.y+r.height}},
+      {a:{x:doorX+55,y:r.y+r.height},b:{x:r.x+r.width,y:r.y+r.height}}];
+  });
+  const decorations=rooms.flatMap(r=>[
+    {kind:'plant' as const,...iso(r.x+28,r.y+35)},
+    {kind:'bookcase' as const,...iso(r.x+r.width-55,r.y+35)},
+  ]);
+  const lounge=iso(offset/6,corridorY+145),petStop=iso(offset/6-70,corridorY+120),dogHome={x:petStop.x+48,y:petStop.y+5};
+  const cols=Math.ceil(offset/240),rows=Math.ceil((corridorY+410)/240),deskRows=Math.ceil(roomHeight/240);
+  const floor=[iso(0,0),iso(offset,0),iso(offset,rows*240),iso(0,rows*240)];
+  const bounds={x:floor[3].x-70,y:-230,width:floor[1].x-floor[3].x+140,height:floor[2].y+330};
+  return {stations,rooms,walls,decorations,lounge,dogHome,corridorY,worldWidth:offset,amenities,floor,bounds,cols,rows,deskRows};
 }

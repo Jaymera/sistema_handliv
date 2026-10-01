@@ -99,5 +99,5 @@ export function PriceChart({ history, currency }: { history: { trade_date: strin
 const styles = StyleSheet.create({
   caption: { color: T.dim, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   chartHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingTop: 14, alignItems: 'center' },
-  chartFooter: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 13 },
+  chartFooter: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 13 },
 });

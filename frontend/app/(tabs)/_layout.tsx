@@ -23,8 +23,9 @@ export default function TabLayout() {
             borderTopColor: C.line,
             borderTopWidth: 1,
           },
+          tabBarActiveBackgroundColor: "#12352F",
           tabBarLabelStyle: { fontSize: 10, fontWeight: "700" },
-          tabBarItemStyle: { paddingVertical: 4 },
+          tabBarItemStyle: { paddingVertical: 5, marginHorizontal: 3, marginVertical: 5, borderRadius: 12 },
         }}
       >
         <Tabs.Screen

@@ -25,5 +25,5 @@ test('web renderer is accessible and paints real amounts, labels and five sector
   const {layoutScene,fitCamera} = require('./sceneGeometry.ts');
   const layout=layoutScene(props.stations);
   drawFloorScene(ctx,props,layout,fitCamera(layout.bounds,1000,700),1000,700,0);
-  for (const t of ['HANDLIV','TRADING FLOOR','RISK','MACRO','NEWS','AI LAB','Alpha','EURUSD','POSIÇÃO ABERTA','US$ 0,00','—']) assert.ok(texts.includes(t),`missing ${t}`);
+  for (const t of ['HANDLIV','TRADING FLOOR','Commodities','Forex','Ações','Crypto','Outros','Alpha','EURUSD','POSIÇÃO ABERTA','US$ 0,00','—']) assert.ok(texts.includes(t),`missing ${t}`);
 });

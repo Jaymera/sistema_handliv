@@ -14,7 +14,8 @@ test('same API, symbol-scoped query and watchlist mutation', () => {
   assert.match(route, /watchlistApi\.(list|add|remove)/);
 });
 test('every field returned by current live analysis remains represented', () => {
-  const source = panel + visual;
+  const workspace = fs.readFileSync(path.join(root, 'src/features/asset-terminal/workspace.ts'), 'utf8');
+  const source = panel + visual + workspace;
   const fields = ['symbol','name','market','currency','sector','industry','last_price',
     'price_history','trade_date','close','final_score','buyer_strength','seller_strength',
     'confidence','trend','horizon','technical','valuation','sentiment','recommendation',
@@ -28,6 +29,13 @@ test('no fake timeframes, support/resistance or synthetic market flow', () => {
   assert.doesNotMatch(panel + visual, /\b(S1|S2|R1|R2|order flow|market flow|M5|M15|H4|D1)\b/i);
 });
 test('missing sentiment is labeled instead of rendered as a numeric meter', () => {
-  assert.match(panel, /item\.value == null \? 'Sem notícias' : item\.value/);
-  assert.match(panel, /item\.value != null \? <Meter/);
+  require('./register-typescript.cjs');
+  const { displayEvidence } = require('../src/features/asset-terminal/workspace.ts');
+  const input = { score: { subscores: { sentiment: 50 } }, sentiment_sample_count: 0 };
+  assert.equal(displayEvidence(input).sentiment, null, 'zero sample cannot masquerade as neutral');
+  assert.equal(displayEvidence({score:input.score}).sentiment, null, 'unknown sample cannot masquerade as measured');
+  assert.equal(displayEvidence({...input,sentiment_sample_count:1}).sentiment,50, 'measured neutral is retained');
+  assert.match(panel, /value:display\.sentiment/);
+  assert.match(panel, /finite\(r\.value\) \? <Meter/);
+  assert.match(panel, /Sem amostra verificável/);
 });

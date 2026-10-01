@@ -13,8 +13,8 @@ test('activity gestures give coffee a cup, rest a phone, conversation expressive
 });
 test('idle people rotate coffee, conversation, rest, meeting and pool with smooth returns',()=>{
  const layout=layoutScene([{id:'magic-10'}]);
- assert.equal(layout.cols,3,'small real accounts have no phantom desk columns');
- assert.equal(layout.deskRows,1,'one desk row is enough for a single Magic');
+ assert.equal(layout.stations.length,1,'no phantom desk identities in empty rooms');
+ assert.equal(layout.rooms.find(r=>r.members.length).rows,1,'one occupied row is enough for a single Magic');
  const desk=layout.stations[0],activities=new Set();
  let last;
  for(let t=0;t<900000;t+=100){
@@ -23,5 +23,5 @@ test('idle people rotate coffee, conversation, rest, meeting and pool with smoot
   if(last) assert.ok(Math.hypot(p.x-last.x,p.y-last.y)<16,'no teleport at routine boundaries');
   last=p;
  }
- for(const activity of ['desk','walking','coffee','chat','rest','meeting','pool'])assert.ok(activities.has(activity),activity);
+ for(const activity of ['desk','walking','coffee','dog','rest','meeting','pool'])assert.ok(activities.has(activity),activity);
 });
