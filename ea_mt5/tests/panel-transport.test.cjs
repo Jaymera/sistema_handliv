@@ -10,7 +10,7 @@ const source=fs.readFileSync(path.join(__dirname,'../HandlivPanel.mq5'),'utf8');
  * These tests model MQL platform builtins to check branching and byte counts.
  * They are not a claim about how the MT5 terminal implements StringToCharArray.
  */
-function transport(json,{conversionFails=false,resizeFails=false}={}){
+function transport(json,{conversionFails=false,resizeFails=false,httpCode=200,errorBody=''}={}){
   const start=source.indexOf('bool HttpPost(');
   const end=source.indexOf('\n//+---',start);
   assert.ok(start>=0&&end>start,'HttpPost region present');
@@ -25,8 +25,8 @@ function transport(json,{conversionFails=false,resizeFails=false}={}){
     // MQL StringToCharArray writes a terminating NUL byte into the array.
     StringToCharArray:(s,a)=>{if(conversionFails)return 0;const b=Buffer.from(s,'utf8');a.push(...b);a.push(0);return b.length;},
     ArrayResize:(a,n)=>{if(resizeFails)return -1;a.length=n;return n;},
-    WebRequest:(method,url,headers,timeout,post)=>{calls.push({method,url,headers,bytes:Buffer.from(post)});return 200;},
-    CharArrayToString:()=>'',JsonGetString:()=>'',IntegerToString:String,
+    WebRequest:(method,url,headers,timeout,post)=>{calls.push({method,url,headers,bytes:Buffer.from(post)});return httpCode;},
+    CharArrayToString:()=>errorBody,JsonErrorField:(response,key)=>{assert.equal(response,errorBody,'diagnostics see decoded error response');return JSON.parse(response).detail[0][key]??'';},JsonGetString:()=>'',IntegerToString:String,
     StringSubstr:(s,i,n)=>s.slice(i,i+n),HttpErrorHelp:()=>'',Print:(...v)=>logs.push(v.join(' ')),
   };
   vm.createContext(context);
@@ -39,7 +39,17 @@ test('HTTP response is decoded before validation diagnostics read it',()=>{
   const start=source.indexOf('bool HttpPost(');
   const end=source.indexOf('\n//+---',start);
   const fn=source.slice(start,end);
-  assert.ok(fn.indexOf('response = CharArrayToString') < fn.indexOf('JsonGetString(response'), 'decode before inspecting error fields');
+  const decoded=fn.indexOf('response = CharArrayToString');
+  const diagnostics=[...fn.matchAll(/Json(?:GetString|ErrorField)\(response/g)].map(m=>m.index);
+  assert.ok(decoded>=0 && diagnostics.length===2,'response decode and both safe diagnostics present');
+  assert.ok(diagnostics.every(i=>decoded<i),'decode before inspecting error fields');
+});
+
+test('HTTP422 retains allowlisted validation type/msg without echoing input or full response',()=>{
+  const body=JSON.stringify({detail:[{type:'dict_type',msg:'Input should be a dictionary',input:{token:'DO-NOT-ECHO-TEST'}}]});
+  const r=transport('{"account":"123"}',{httpCode:422,errorBody:body});
+  assert.equal(r.result,false);assert.match(r.status,/422/);assert.match(r.status,/dict_type/);assert.match(r.status,/Input should be a dictionary/);
+  assert.ok(r.logs.length>0);assert.ok(r.logs.every(s=>!s.includes('DO-NOT-ECHO-TEST') && !s.includes(body)));
 });
 
 test('POST body carries no terminating NUL byte, otherwise the API parser rejects it',()=>{
@@ -89,7 +99,11 @@ test('stats serializer keeps every account field and the robot snapshot intact',
     DoubleToString:(v,n)=>Number(v).toFixed(n),IntegerToString:String,
     StringFormat:()=>'', // fault injection: an upstream failure must not empty the body
   };
-  const json=vm.runInNewContext(statsBody(),ctx);
+  ctx.AutomationPositionsJson=()=>JSON.stringify([{symbol:'EURUSD.m',open_positions:2}]);
+  ctx.AutomationReady=()=>false;
+  const prefix=source.slice(source.indexOf('void SendStats()')).match(/string robots=RobotStatsJson\(\);\s*string automationPositions=AutomationPositionsJson\(\);/);
+  assert.ok(prefix,'snapshot collectors are evaluated before serialization');
+  const json=vm.runInNewContext(prefix[0].replace(/\bstring /g,'let ')+'\n('+statsBody()+')',ctx);
   assert.ok(json.length>0,'a formatting failure must not produce an empty body');
   const data=JSON.parse(json);
   assert.equal(data.account,'123456');
@@ -101,4 +115,6 @@ test('stats serializer keeps every account field and the robot snapshot intact',
   assert.equal(data.open_positions,0);
   assert.equal(data.currency,'USD');
   assert.deepEqual(data.robots,robots,'the robot list drives the trading floor desks');
+  assert.equal(data.automation_v1,true);assert.equal(data.automation_protection_v1,true);assert.equal(data.automation_ready,false);
+  assert.deepEqual(data.automation_positions,[{symbol:'EURUSD.m',open_positions:2}]);
 });

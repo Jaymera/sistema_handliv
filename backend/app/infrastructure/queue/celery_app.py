@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.infrastructure.queue.tasks.compute_scores",
         "app.infrastructure.queue.tasks.fetch_news",
         "app.infrastructure.queue.tasks.run_backtest",
+        "app.infrastructure.queue.tasks.mt5_automation_observer",
     ],
 )
 
@@ -48,6 +49,10 @@ def _beat_schedule() -> dict:
             "task": "app.infrastructure.queue.tasks.fetch_prices.fetch_all_prices",
             "schedule": crontab_v,
         }
+    schedule["mt5-automation-observe"] = {
+        "task": "mt5_automation.observe_signals",
+        "schedule": 60.0,
+    }
     schedule["fetch-news"] = {
         "task": "app.infrastructure.queue.tasks.fetch_news.fetch_all_news",
         "schedule": crontab(minute=0, hour="8,10,12,14,16,18"),

@@ -26,6 +26,7 @@ from app.infrastructure.database.models.user_assets import (
     MT5Account,
     WatchlistItem,
 )
+from app.infrastructure.database.models.automation import MT5AutomationRule, MT5AutomationEvent
 from app.infrastructure.database.models.trades import MT5AccountStats, MT5RobotStats, MT5Command, TradeRecord
 from app.infrastructure.database.models.backtests import (
     Backtest,

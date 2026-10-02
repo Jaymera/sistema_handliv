@@ -241,6 +241,27 @@ export const mt5Api = {
   remove: (id: string) => request<void>(`/mt5/accounts/${id}`, { method: "DELETE" }),
 };
 
+export interface MT5AutomationRule {
+  id: string;
+  account_id: string;
+  symbol: string;
+  broker_symbol: string;
+  direction: "buy" | "sell" | "both";
+  volume: string;
+  enabled: boolean;
+  sl_atr_multiplier: string;
+  tp_atr_multiplier: string;
+  last_signal: string | null;
+  last_status: string | null;
+}
+export type MT5AutomationInput = Pick<MT5AutomationRule, "account_id" | "broker_symbol" | "direction" | "volume" | "enabled" | "sl_atr_multiplier" | "tp_atr_multiplier">;
+
+// Configuration only. The durable backend job observes canonical live-analysis signals.
+export const mt5AutomationApi = {
+  list: (accountId: string) => request<{ items: MT5AutomationRule[] }>(`/mt5/automation?account_id=${encodeURIComponent(accountId)}`),
+  save: (symbol: string, body: MT5AutomationInput) => request<MT5AutomationRule>(`/mt5/automation/${encodeURIComponent(symbol)}`, { method: "PUT", body: JSON.stringify(body) }),
+};
+
 export interface MT5Stats {
   login: string;
   currency: string;

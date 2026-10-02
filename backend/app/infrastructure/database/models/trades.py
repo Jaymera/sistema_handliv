@@ -4,15 +4,15 @@ import uuid
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.mysql import CHAR
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.infrastructure.database.base import Base, TimestampMixin
 
 
-def _uuid() -> uuid.UUID:
-    return uuid.uuid4()
+def _uuid() -> str:
+    return str(uuid.uuid4())
 
 
 class TradeRecord(Base, TimestampMixin):
@@ -41,7 +41,12 @@ class MT5Command(Base, TimestampMixin):
     symbol: Mapped[str | None] = mapped_column(String(32), nullable=True)
     volume: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", index=True)
-    # pending -> sent -> executed | failed
+    rule_id: Mapped[str | None] = mapped_column(CHAR(36, charset='ascii'), ForeignKey('mt5_automation_rules.id', ondelete='SET NULL'), nullable=True, index=True)
+    automation: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    sl_atr_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    tp_atr_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(4, 2), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # pending -> sent -> executed | failed | revoked | expired
     result_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -55,6 +60,10 @@ class MT5AccountStats(Base, TimestampMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(CHAR(36, charset="ascii"), primary_key=True, default=_uuid)
     account_number: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    automation_v1: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    automation_ready: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    automation_protection_v1: Mapped[bool] = mapped_column(Boolean, default=False, server_default='0', nullable=False)
+    automation_positions: Mapped[list | None] = mapped_column(JSON, nullable=True)
     login: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     currency: Mapped[str] = mapped_column(String(16), nullable=False, default="USD")
     equity: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False, default=0)

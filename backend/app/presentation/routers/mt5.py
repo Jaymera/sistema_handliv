@@ -52,7 +52,7 @@ def ea_account_status(
 
 
 def _cmd_to_dict(c: MT5Command) -> dict:
-    return {
+    result = {
         "id": str(c.id),
         "account_number": c.account_number,
         "action": c.action,
@@ -63,6 +63,27 @@ def _cmd_to_dict(c: MT5Command) -> dict:
         "created_at": c.created_at.isoformat() if c.created_at else None,
         "executed_at": c.executed_at.isoformat() if c.executed_at else None,
     }
+    if c.automation:
+        from app.application.mt5_automation import MAGIC, utc
+        from app.application.mt5_automation import protection_dict
+        result.update(**protection_dict(c))
+        result.update(automation=True, rule_id=str(c.rule_id) if c.rule_id else None,
+            expires_at=utc(c.expires_at).isoformat() if c.expires_at else None, magic=MAGIC)
+    return result
+
+
+@router.get("/mt5/automation")
+def list_automation(account_id: str = Query(...), user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    from app.application.mt5_automation import list_rules
+    return list_rules(db, user, account_id)
+
+
+@router.put("/mt5/automation/{symbol}")
+def put_automation(symbol: str, payload: dict, user: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict:
+    from app.application.mt5_automation import put_rule
+    result = put_rule(db, user, symbol, payload)
+    db.commit()
+    return result
 
 
 @router.post("/mt5/orders", status_code=status.HTTP_201_CREATED)
@@ -132,20 +153,36 @@ def ea_poll_commands(
     account: str = Query(...),
     token: str | None = Query(None),
     db: Session = Depends(get_db),
+    automation_v1: str | None = Query(None),
+    automation_protection_v1: str | None = Query(None),
+    automation_ready: str | None = Query(None),
 ) -> dict:
     """O EA consulta este endpoint (a cada segundo) para receber comandos pendentes da conta."""
     _require_ea_token(account, token)
+    # Account lock serializes worker/config/poll changes for automation.
+    db.scalar(select(MT5Account).where(MT5Account.account_number == account).with_for_update())
     rows = db.scalars(
         select(MT5Command)
         .where(MT5Command.account_number == account, MT5Command.status == "pending")
         .order_by(MT5Command.created_at.asc())
         .limit(10)
+        .with_for_update()
     ).all()
     from datetime import datetime, timezone
 
     items = []
     for c in rows:
+        if c.automation and (automation_v1, automation_protection_v1, automation_ready) != ("1", "1", "1"):
+            continue  # Legacy charts must never receive a protected automation command.
+        from app.application.mt5_automation import command_allowed
+        if not command_allowed(db, c, datetime.now(timezone.utc)):
+            continue
         c.status = "sent"
+        if c.automation and c.rule_id:
+            from app.infrastructure.database.models import MT5AutomationRule
+            rule = db.get(MT5AutomationRule, c.rule_id)
+            if rule:
+                rule.last_status = "sent"
         c.sent_at = datetime.now(timezone.utc)
         items.append(_cmd_to_dict(c))
     db.commit()
@@ -159,16 +196,30 @@ def ea_report_result(payload: dict, db: Session = Depends(get_db)) -> dict:
     token = payload.get("token")
     if not cmd_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "id é obrigatório")
-    cmd = db.get(MT5Command, cmd_id)
+    candidate = db.get(MT5Command, cmd_id)
+    if candidate is not None:
+        _require_ea_token(candidate.account_number, token)
+        db.scalar(select(MT5Account).where(MT5Account.account_number == candidate.account_number).with_for_update())
+    cmd = db.scalar(select(MT5Command).where(MT5Command.id == cmd_id).with_for_update().execution_options(populate_existing=True))
     if cmd is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "comando não encontrado")
     _require_ea_token(cmd.account_number, token)
+    if cmd.automation:
+        if cmd.status != "sent":
+            return {"status": cmd.status}
+        if not isinstance(payload.get("success"), bool):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "success inválido")
     success = bool(payload.get("success"))
     cmd.status = "executed" if success else "failed"
     cmd.result_message = (payload.get("message") or "")[:500] or None
     from datetime import datetime, timezone
 
     cmd.executed_at = datetime.now(timezone.utc)
+    if cmd.automation and cmd.rule_id:
+        from app.infrastructure.database.models import MT5AutomationRule
+        rule = db.get(MT5AutomationRule, cmd.rule_id)
+        if rule:
+            rule.last_status = cmd.status
     db.commit()
     return {"status": cmd.status}
 
@@ -249,6 +300,10 @@ _MONEY_FIELDS = (
 
 def _stats_to_dict(s: MT5AccountStats) -> dict:
     return {
+        "automation_v1": bool(getattr(s, "automation_v1", False)),
+        "automation_protection_v1": bool(getattr(s, "automation_protection_v1", False)),
+        "automation_ready": bool(getattr(s, "automation_ready", False)),
+        "automation_positions": getattr(s, "automation_positions", None),
         "login": s.login,
         "currency": s.currency,
         "equity": float(s.equity),
@@ -358,6 +413,9 @@ def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "account é obrigatório")
     _require_ea_token(account, token)
     robots = _validate_robots(payload["robots"]) if "robots" in payload else None
+    from app.application.mt5_automation import validate_stats_automation
+    automation = validate_stats_automation(payload)
+    db.scalar(select(MT5Account).where(MT5Account.account_number == account).with_for_update())
 
     def _num(key: str) -> Decimal:
         try:
@@ -375,6 +433,10 @@ def ea_report_stats(payload: dict, db: Session = Depends(get_db)) -> dict:
     if row is None:
         row = MT5AccountStats(account_number=account)
         db.add(row)
+    from datetime import datetime, timezone
+    for key, value in automation.items():
+        setattr(row, key, value)
+    row.updated_at = datetime.now(timezone.utc)
     row.login = str(payload.get("login") or account)
     row.currency = (str(payload.get("currency") or "USD"))[:16]
     for key in _MONEY_FIELDS:

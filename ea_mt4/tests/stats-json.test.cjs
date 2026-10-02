@@ -19,7 +19,11 @@ test('stats serializer produces a nonempty object, retains every account field a
     // Fault injection of a formatting failure; no claim about MQL builtins.
     StringFormat:()=>'',
   };
-  const json=vm.runInNewContext(match[1],ctx);
+  ctx.AutomationPositionsJson=()=>JSON.stringify([{symbol:'EURUSD.m',open_positions:2}]);
+  ctx.AutomationReady=()=>false;
+  const prefix=stats.match(/string robots=RobotStatsJson\(\);\s*string automationPositions=AutomationPositionsJson\(\);/);
+  assert.ok(prefix,'snapshot collectors are evaluated before serialization');
+  const json=vm.runInNewContext(prefix[0].replace(/\bstring /g,'let ')+'\n('+match[1]+')',ctx);
   assert.ok(json.length>0,'an upstream formatting failure must not produce an empty body');
   const data=JSON.parse(json);
   assert.equal(data.account,'123456');assert.equal(data.login,data.account);
@@ -29,4 +33,6 @@ test('stats serializer produces a nonempty object, retains every account field a
   assert.equal(data.win_trades,1);assert.equal(data.loss_trades,0);
   assert.equal(data.total_trades,1);assert.equal(data.open_positions,0);
   assert.equal(data.currency,'USD');assert.deepEqual(data.robots,robots);
+  assert.equal(data.automation_v1,true);assert.equal(data.automation_protection_v1,true);assert.equal(data.automation_ready,false);
+  assert.deepEqual(data.automation_positions,[{symbol:'EURUSD.m',open_positions:2}]);
 });

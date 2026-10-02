@@ -9,6 +9,8 @@ import { useState } from "react";
 import { featuresApi, mt5Api, ordersApi, statsApi, type MT5Stats } from "@/api/client";
 import { Badge, C, Card, Empty, GhostButton, Input, Loading, PrimaryButton, SectionTitle, UpsellCard, openUrl } from "@/components/ui";
 
+import { AutomationControls } from "@/features/mt5-automation/AutomationControls";
+
 const WHATSAPP = "https://wa.me/551152866453";
 const HANDLIV = "https://handliv.com";
 
@@ -185,7 +187,7 @@ export default function MT5Screen() {
   const canMT5 = !!features?.features.trading_panel;
   const isUltimate = !!features?.features.auto_robot;
 
-  const { data: statsData, isLoading: sLoading } = useQuery({
+  const { data: statsData, isLoading: sLoading, isError: sError } = useQuery({
     queryKey: ["mt5-stats"],
     queryFn: statsApi.list,
     enabled: canMT5,
@@ -384,6 +386,12 @@ export default function MT5Screen() {
           </Card>
         </View>
       )}
+
+      {active && !sLoading && !sError ? isUltimate ? <AutomationControls key={active.id} account={active} /> : <Card className="p-4 mb-5">
+        <SectionTitle>Automação dos favoritos</SectionTitle>
+        <Text className="text-ink-soft mb-3">Disponível no Ultimate (permissão auto_robot). O plano Start mantém execução manual; nenhuma automação será consultada ou ativada.</Text>
+        <PrimaryButton label="Conhecer Ultimate" onPress={() => router.push("/pricing")} />
+      </Card> : null}
 
       {/* Painel de Execução */}
       {items.length > 0 ? (

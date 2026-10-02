@@ -18,7 +18,20 @@ export default function TradingFloorScreen() {
   const mobile = width < 720;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const [systemReducedMotion, setReducedMotion] = useState(false);
+  const [motionOverride, setMotionOverride] = useState<boolean | null>(null);
+  const motionKey = `handliv.floor.motion:${floor.user?.id ?? 'guest'}`;
+  useEffect(() => {
+    let value: string | null = null;
+    try { if (Platform.OS === 'web') value = localStorage.getItem(motionKey); } catch { /* storage can be blocked */ }
+    setMotionOverride(value === 'on' ? false : value === 'off' ? true : null);
+  }, [motionKey]);
+  const reducedMotion = motionOverride ?? systemReducedMotion;
+  const toggleMotion = () => {
+    const next = !reducedMotion;
+    setMotionOverride(next);
+    try { if (Platform.OS === 'web') localStorage.setItem(motionKey, next ? 'off' : 'on'); } catch { /* session preference still works */ }
+  };
   const [command, setCommand] = useState<FloorSceneProps['command']>({ type: 'fit', seq: 0 });
   const close = useCallback(() => setSelectedId(null), []);
   useEffect(() => { setSelectedId(null); }, [floor.demo, floor.user?.id]);
@@ -47,6 +60,7 @@ export default function TradingFloorScreen() {
     <View style={styles.toolbar}>
       <View style={{ flex: 1, minWidth: 130 }}><Text style={styles.eyebrow}>LIVE OPERATIONS</Text><Text style={styles.sceneTitle}>{floor.demo ? 'Pregão simulado' : 'Mesas por Magic Number'}</Text></View>
       <Button label="−" onPress={() => send('out')} /><Button label="+" onPress={() => send('in')} />
+      <Button label={reducedMotion ? 'Ativar animações' : 'Pausar animações'} onPress={toggleMotion} selected={!reducedMotion} />
       <Button label="Fit Screen" onPress={() => send('fit')} />
       <Button label={large ? 'Fechar tela cheia' : 'Tela cheia'} onPress={() => { setExpanded(!large); send('fit'); }} />
     </View>
