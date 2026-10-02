@@ -26,7 +26,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, autoRefresh = true): Promise<T> {
+async function request<T>(path: string, init: RequestInit = {}, autoRefresh = true, mapResponse?: (data: T, response: Response) => T): Promise<T> {
   const accessToken = useAuthStore.getState().accessToken;
   if (accessToken) useAuthStore.getState().touchActivity();
   const headers: Record<string, string> = {
@@ -43,7 +43,7 @@ async function request<T>(path: string, init: RequestInit = {}, autoRefresh = tr
       await useAuthStore.getState().logout();
       throw new ApiError("UNAUTHENTICATED", "sessão expirou", 401);
     }
-    return request<T>(path, init, false);
+    return request<T>(path, init, false, mapResponse);
   }
   if (!res.ok) {
     let code = "INTERNAL";
@@ -56,7 +56,8 @@ async function request<T>(path: string, init: RequestInit = {}, autoRefresh = tr
     throw new ApiError(code, message, res.status);
   }
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const data = (await res.json()) as T;
+  return mapResponse ? mapResponse(data, res) : data;
 }
 
 export const authApi = {
@@ -262,7 +263,8 @@ export interface MT5Stats {
 
 export const statsApi = {
   list: () =>
-    request<{ items: { id: string; account_number: string; broker: string | null; is_active: boolean; stats: MT5Stats | null }[] }>("/mt5/stats"),
+    request<{ server_time?: string | null; items: { id: string; account_number: string; broker: string | null; is_active: boolean; stats: MT5Stats | null }[] }>("/mt5/stats", {}, true,
+      (data, response) => ({ ...data, server_time: data.server_time ?? response.headers.get("Date") })),
 };
 
 export const ordersApi = {

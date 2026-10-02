@@ -4,7 +4,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { featuresApi, statsApi } from '@/api/client';
 import { useAuthStore } from '@/state/authStore';
-import { accountsToStations, accountSummary, chooseSource } from './model';
+import { accountsToStations, accountSummary, chooseSource, snapshotNow } from './model';
 import { createDemo, advanceDemo } from './demo';
 import type { FloorAccount } from './types';
 
@@ -85,7 +85,7 @@ export function useTradingFloor() {
     const timer = setInterval(() => setFrame(previous => previous ? advanceDemo(previous, ++step) : createDemo(count)), 6000);
     return () => clearInterval(timer);
   }, [demo, count, active, focused]);
-  const realStations = useMemo(() => accountsToStations(accounts, clock), [stats.data, allowed, clock]);
+  const realStations = useMemo(() => accountsToStations(accounts, snapshotNow(stats.data?.server_time, stats.dataUpdatedAt, clock)), [stats.data, stats.dataUpdatedAt, allowed, clock]);
   const selectedAccount = accounts.find(a => a.id === accountId) ?? accounts[0];
   const stations = demo ? frame?.stations ?? [] : realStations;
   const summary = demo && frame ? frame.summary : accountSummary(selectedAccount, realStations);

@@ -30,6 +30,14 @@ export function timestamp(value: string | null): number {
   return Date.parse(/(?:Z|[+-]\d\d:\d\d)$/i.test(value) ? value : `${value}Z`);
 }
 
+/** Compare server-written telemetry against the server clock, not a skewed browser clock.
+ * Elapsed local time still expires a snapshot when polling pauses. */
+export function snapshotNow(serverTime: string | null | undefined, receivedAt: number, localNow: number): number {
+  const server = serverTime ? Date.parse(serverTime) : NaN;
+  return Number.isFinite(server) && receivedAt > 0
+    ? server + Math.max(0, localNow - receivedAt) : localNow;
+}
+
 export function accountsToStations(accounts: FloorAccount[], now = Date.now()): FloorStation[] {
   return accounts.flatMap((account) => {
     const stats = account.stats;
