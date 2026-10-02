@@ -163,6 +163,21 @@ def test_routes_poll_metadata_and_results_are_idempotent(db, owned):
     assert api['ea_report_result']({'id':cmd.id,'success':False},db)['status']=='executed'
 
 
+def test_frontend_contract_activates_without_explicit_fixed_protection_fields(db, owned):
+    """Regression: the real frontend PUT sends only account_id, broker_symbol,
+    direction, volume, sl/tp multipliers and enabled — never stop_mode/atr_period/
+    atr_timeframe (server-fixed ATR14 H1). Enabling must succeed, not 400."""
+    from app.application.mt5_automation import put_rule
+    u, a, s = owned
+    frontend_payload = dict(account_id='a', broker_symbol='EURUSD.a', direction='both',
+                            volume='0.10', sl_atr_multiplier='2.00', tp_atr_multiplier='3.00',
+                            enabled=True)
+    data = put_rule(db, u, 'EURUSD', frontend_payload)
+    assert data['enabled'] is True
+    assert data['stop_mode'] == 'atr' and data['atr_period'] == 14 and data['atr_timeframe'] == 'H1'
+    assert data['sl_atr_multiplier'] == '2.00' and data['tp_atr_multiplier'] == '3.00'
+
+
 def test_mandatory_protection_persisted_validated_and_capability_blocks(db,owned):
     from app.application.mt5_automation import put_rule, dispatch_allowed, observe_signal
     from app.infrastructure.database.models import MT5AccountStats, MT5AutomationRule

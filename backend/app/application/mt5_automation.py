@@ -205,8 +205,9 @@ def command_allowed(db, cmd, now):
 
 
 def parse_protection(payload, enabled):
-    keys = ('stop_mode', 'atr_period', 'atr_timeframe', 'sl_atr_multiplier', 'tp_atr_multiplier')
-    if enabled and any(k not in payload for k in keys):
+    # Frontend contract sends the two multipliers; stop_mode/atr_period/
+    # atr_timeframe are server-fixed (ATR14 H1) and validated when present.
+    if enabled and any(k not in payload for k in ('sl_atr_multiplier', 'tp_atr_multiplier')):
         raise ValueError('proteção SL/TP obrigatória')
     if payload.get('stop_mode', 'atr') != 'atr' or type(payload.get('atr_period', 14)) is not int or payload.get('atr_period', 14) != 14 or payload.get('atr_timeframe', 'H1') != 'H1':
         raise ValueError('proteção deve usar ATR14 H1')
