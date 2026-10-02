@@ -131,7 +131,7 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
     line({x:8,y:2},{x:10-step,y:28},'#26354A',8);
     rect(-18+step,27,13,6,'#0A0C16',2);rect(7-step,27,13,6,'#0A0C16',2);
     rect(-16,-30+breathing,31,40,appearance.jacket,10);
-    const gesture=avatarGesture(pose,now,props.reducedMotion);
+    const gesture=avatarGesture(pose,now,props.reducedMotion,pos.id);
     line({x:-12,y:-22},{x:gesture.left.x,y:gesture.left.y},appearance.jacket,8);
     line({x:12,y:-22},{x:gesture.right.x,y:gesture.right.y},appearance.jacket,8);
     for(const hand of [gesture.left,gesture.right]){ctx.fillStyle=appearance.skin;ctx.beginPath();ctx.arc(hand.x,hand.y,4,0,Math.PI*2);ctx.fill();}
@@ -159,12 +159,12 @@ export function drawFloorScene(ctx: CanvasRenderingContext2D, props: FloorSceneP
   }
   // Shared dog response: faster wag and playful bounce while an idle visitor pets it.
   {const dog=dogPose(props.stations,layout,now,props.reducedMotion),dir=-1;
-    ctx.save();ctx.translate(dog.x,dog.y-dog.bounce);ctx.scale(1.3,1.3);ctx.fillStyle='#A87852';ctx.beginPath();ctx.ellipse(0,0,16,9,0,0,Math.PI*2);ctx.fill();
+    ctx.save();ctx.translate(dog.x,dog.y-dog.bounce);ctx.scale(dog.facing==='right'?-1.3:1.3,1.3);ctx.fillStyle='#A87852';ctx.beginPath();ctx.ellipse(0,0,16,9,0,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(dir*15,-8,8,0,Math.PI*2);ctx.fill();
     poly([{x:dir*10,y:-13},{x:dir*7,y:-24},{x:dir*17,y:-15}],'#79543C');
     ctx.fillStyle='#101725';ctx.beginPath();ctx.arc(dir*19,-10,2,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(dir*23,-5,2,0,Math.PI*2);ctx.fill();
-    line({x:-10,y:6},{x:-10,y:13},'#79543C',3);line({x:10,y:6},{x:10,y:13},'#79543C',3);
+    line({x:-10,y:6},{x:-10+dog.stride,y:13},'#79543C',3);line({x:10,y:6},{x:10-dog.stride,y:13},'#79543C',3);
     line({x:14,y:-2},{x:23,y:-15+dog.wag},'#A87852',4);
     if(dog.visitorId){text('♥',-6,-32,18,'#F2B485',800);ctx.fillStyle='#F4C35C';ctx.beginPath();ctx.arc(-30,10,5,0,Math.PI*2);ctx.fill();}
     ctx.restore();}

@@ -22,7 +22,7 @@ test('conversation has a facing nearby visual-only coworker, never invented real
    assert.equal(peer.decorative,true);assert.equal(p.activity,'chat');assert.equal(p.facing,'right');assert.equal(peer.pose.facing,'left');assert.ok(Math.hypot(peer.x-desk.x-p.x,peer.y-desk.y-p.y)<90);
   }
  }
- assert.ok(found);assert.deepEqual(g.officeCoworkers([{id:'a',status:'OFFLINE'},{id:'b',status:'POSIÇÃO ABERTA'}],scene,30000,false),[]);
+ assert.ok(found);assert.deepEqual(g.officeCoworkers([{id:'a',status:'OFFLINE'},{id:'b',status:'OFFLINE'}],scene,30000,false),[]);
 });
 test('dog visits visibly pet/play and synchronize dog response, continuous return and reduced motion',()=>{
  const scene=g.layoutScene([{id:'solo',symbol:'EURUSD'}]),desk=scene.stations[0];let last,seen=new Set(),pets=0;

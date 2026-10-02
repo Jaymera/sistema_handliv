@@ -36,7 +36,7 @@ const Station = memo(function Station({station:s,x,y,selected,demo}:{station:Flo
 const Avatar = memo(function Avatar({id,name,x,y,pose,now,reducedMotion}:{id:string;name:string;x:number;y:number;pose:ReturnType<typeof traderPose>;now:number;reducedMotion:boolean}) {
   const appearance=agentAppearance(id),step=pose.walking?pose.stride:0;
   const breath=reducedMotion?0:Math.sin(now/730+(x%13))*.8;
-  const gesture=avatarGesture(pose,now,reducedMotion);
+  const gesture=avatarGesture(pose,now,reducedMotion,id);
   return <G transform={`translate(${x+pose.x} ${y+pose.y}) scale(1.16)`}>
     <Ellipse cx={0} cy={30} rx={19} ry={6} fill="#07101D"/>
     <Line x1={-9} y1={2} x2={-10+step} y2={28} stroke="#26354A" strokeWidth={8}/>
@@ -123,7 +123,7 @@ function FloorScene(props:FloorSceneProps) {
         {people.map(({point,station,pose})=><Avatar key={point.id} id={point.id} name={station.name} x={point.x} y={point.y} pose={pose} now={now} reducedMotion={props.reducedMotion}/>)}
         {officeCoworkers(props.stations,layout,now,props.reducedMotion).map(peer=><Avatar key={peer.id} id={peer.id} name={peer.name} x={peer.x} y={peer.y} pose={peer.pose} now={now} reducedMotion={props.reducedMotion}/>)}
         {(()=>{const dog=dogPose(props.stations,layout,now,props.reducedMotion),dir=-1;
-          return <G transform={`translate(${dog.x} ${dog.y-dog.bounce}) scale(1.3)`}><Ellipse cx={0} cy={0} rx={16} ry={9} fill="#A87852"/><Circle cx={dir*15} cy={-8} r={8} fill="#A87852"/><Polygon points={`${dir*10},-13 ${dir*7},-24 ${dir*17},-15`} fill="#79543C"/><Circle cx={dir*19} cy={-10} r={2} fill="#101725"/><Circle cx={dir*23} cy={-5} r={2} fill="#101725"/><Line x1={-10} y1={6} x2={-10} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={10} y1={6} x2={10} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={14} y1={-2} x2={23} y2={-15+dog.wag} stroke="#A87852" strokeWidth={4}/>{dog.visitorId&&<><Text x={-6} y={-32} fill="#F2B485" fontSize={18}>♥</Text><Circle cx={-30} cy={10} r={5} fill="#F4C35C"/></>}</G>;})()}
+          return <G transform={`translate(${dog.x} ${dog.y-dog.bounce}) scale(${dog.facing==='right'?-1.3:1.3} 1.3)`}><Ellipse cx={0} cy={0} rx={16} ry={9} fill="#A87852"/><Circle cx={dir*15} cy={-8} r={8} fill="#A87852"/><Polygon points={`${dir*10},-13 ${dir*7},-24 ${dir*17},-15`} fill="#79543C"/><Circle cx={dir*19} cy={-10} r={2} fill="#101725"/><Circle cx={dir*23} cy={-5} r={2} fill="#101725"/><Line x1={-10} y1={6} x2={-10+dog.stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={10} y1={6} x2={10-dog.stride} y2={13} stroke="#79543C" strokeWidth={3}/><Line x1={14} y1={-2} x2={23} y2={-15+dog.wag} stroke="#A87852" strokeWidth={4}/>{dog.visitorId&&<><Text x={-6} y={-32} fill="#F2B485" fontSize={18}>♥</Text><Circle cx={-30} cy={10} r={5} fill="#F4C35C"/></>}</G>;})()}
       </G>
     </Svg>
   </View>;

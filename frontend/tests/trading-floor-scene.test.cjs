@@ -12,12 +12,12 @@ test('three social areas fit on a dedicated row without overlapping magic desks'
   }
 });
 
-test('idle trader walks and returns to desk; active and reduced-motion trader stay seated', () => {
+test('idle trader walks and returns to desk; offline and reduced-motion trader stay seated', () => {
   const first = traderPose('AGUARDANDO', 0, 'magic-10', false);
   const samples = Array.from({length: 100}, (_, i) => traderPose('AGUARDANDO', i * 200, 'magic-10', false));
   assert.ok(samples.some(p => p.walking && p.x !== first.x));
   assert.ok(samples.some(p => !p.walking));
-  for (const status of ['OPERANDO', 'POSIÇÃO ABERTA', 'OFFLINE']) {
+  for (const status of ['OFFLINE']) {
     assert.deepEqual(traderPose(status, 5000, 'magic-10', false), traderPose(status, 0, 'magic-10', false));
   }
   assert.deepEqual(traderPose('AGUARDANDO', 5000, 'magic-10', true), traderPose('AGUARDANDO', 0, 'magic-10', true));
@@ -65,11 +65,28 @@ test('walking agent remains selectable at its current location, offline one neve
   assert.equal(hitAgent(screen, [{id:desk.id,status:'OFFLINE'}], layout, camera, time, false),null);
 });
 
-test('agents at open positions remain at work and offline desks have no agent', () => {
+test('present active traders take short visual breaks but predominantly work without changing telemetry', () => {
+  const layout = layoutScene([{id:'active',symbol:'EURUSD'}]);
+  const desk = layout.stations[0];
+  const sample = status => Array.from({length:8000}, (_, i) => traderPose(status, i * 500, desk.id, false, desk, layout));
+  const waiting = sample('AGUARDANDO');
+  for (const status of ['OPERANDO', 'POSIÇÃO ABERTA']) {
+    const station = Object.freeze({id:desk.id,status,openPositions:3,profitDay:12});
+    const before = JSON.stringify(station);
+    const poses = sample(station.status);
+    assert.ok(poses.some(p => p.walking && Math.hypot(p.x,p.y)>80), `${status} must walk`);
+    assert.ok(poses.filter(p => p.activity==='desk').length / poses.length > .70, 'active agents predominantly work');
+    const dwell = rows => rows.filter(p => !p.walking && p.activity!=='desk').length;
+    assert.ok(dwell(poses)<dwell(waiting)/2, 'active agents have shorter, less frequent breaks');
+    assert.equal(JSON.stringify(station),before);
+  }
+});
+
+test('offline desks have no agent and present desks preserve truthful presence', () => {
   assert.equal(avatarVisible('OFFLINE'), false);
   assert.equal(avatarVisible('POSIÇÃO ABERTA'), true);
   assert.equal(avatarVisible('AGUARDANDO'), true);
-  for (const status of ['OPERANDO', 'POSIÇÃO ABERTA', 'OFFLINE']) {
+  for (const status of ['OFFLINE']) {
     assert.equal(traderPose(status, 20000, 'magic-10', false).activity, 'desk');
   }
 });

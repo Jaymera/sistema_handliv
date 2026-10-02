@@ -42,7 +42,9 @@ export function agentAppearance(id: string) {
 type SocialArea = 'pool' | 'coffee' | 'meeting' | 'chat' | 'rest' | 'dog';
 type Pose = { x: number; y: number; walking: boolean; stride: number; facing: 'left' | 'right'; activity: 'desk' | 'walking' | SocialArea };
 /** Shared Canvas/SVG body language, independent of financial telemetry. */
-export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean) {
+export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean, id = '') {
+  // Independent body-language clocks; identity affects presentation only.
+  if (id && !reducedMotion) now += hashId(id) % 18000;
   const wave = reducedMotion ? 0 : Math.sin(now / 420);
   const step = reducedMotion ? 0 : pose.stride;
   const left = { x: -24, y: -16 }, right = { x: 23, y: -16 };
@@ -50,7 +52,13 @@ export function avatarGesture(pose: Pose, now: number, reducedMotion: boolean) {
   let lean = 0;
   switch (pose.activity) {
     case 'walking': left.y += step * 1.4; right.y -= step * 1.4; lean = step * .15; break;
-    case 'desk': left.y = -20 + wave * 2; right.y = -22 - wave * 2; break;
+    case 'desk': {
+      const phase = reducedMotion ? 0 : ((now % 18000) + 18000) % 18000;
+      left.y = -20 + wave * 2; right.y = -22 - wave * 2;
+      if (phase >= 15000) { left.x = -20; right.x = 20; left.y = -48 + wave * 2; right.y = -48 - wave * 2; }
+      else if (phase >= 12000) { right.x = 12; right.y = -39 + wave; }
+      break;
+    }
     case 'coffee': right.x = 15; right.y = -31 + wave * 6; prop = 'cup'; break;
     case 'chat': case 'meeting': right.x = 28 + wave * 4; right.y = -30 + wave * 8; left.y = -18 - wave * 3; break;
     case 'rest': right.x = 18; right.y = -28; left.x = -10; left.y = -23; lean = -3; prop = 'phone'; break;
@@ -79,10 +87,13 @@ function along(points: Point[], fraction: number): { point: Point; facing: 'left
 }
 export function traderPose(status: string, now: number, id: string, reducedMotion: boolean,
   desk?: Point, layout?: ReturnType<typeof layoutScene>): Pose {
-  if (status !== 'AGUARDANDO' || reducedMotion) return atDesk;
+  if (!avatarVisible(status) || reducedMotion) return atDesk;
+  const active = status !== 'AGUARDANDO';
   const seed = hashId(id);
   if (!desk || !layout) {
-    const phase = ((now + seed % 7000) % 12000) / 12000;
+    const cycle = active ? 120000 : 12000;
+    const elapsed = ((now + seed % cycle) % cycle + cycle) % cycle;
+    const phase = active ? (elapsed - 60000) / 12000 : elapsed / 12000;
     if (phase < .16 || phase > .86) return atDesk;
     const t = phase < .40 ? (phase - .16) / .24 : phase < .63 ? 1 : 1 - (phase - .63) / .23;
     return { x: 88 * t, y: 56 * t, walking: phase < .40 || phase > .63,
@@ -93,15 +104,20 @@ export function traderPose(status: string, now: number, id: string, reducedMotio
   const activities: SocialArea[]=['dog','coffee','meeting',layout.stations.length>1?'chat':'dog','rest','pool'];
   const routes=activities.map(activity=>routeGrid(id,layout,activity).map(p=>iso(p.x,p.y)));
   const lengths = routes.map(points => points.slice(1).reduce((total, p, i) => total + Math.hypot(p.x - points[i].x, p.y - points[i].y), 0));
-  // A common period keeps destinations changing only when safely back at the desk.
-  const trip = Math.max(3500, Math.max(...lengths) / 105 * 1000);
-  const pause = 11000 + seed % 6000, deskPause = 4500 + seed % 2500;
-  const cycle = deskPause * 2 + trip * 2 + pause;
+  // Reserve the longest trip as a stable cycle budget, but walk each actual
+  // distance at a human pace. Unused travel time becomes additional desk time.
+  const speed = 88 + seed % 25;
+  const trips = lengths.map(length => Math.max(1000, length / speed * 1000));
+  const longestTrip = Math.max(...trips);
+  const pause = active ? 8000 + seed % 4000 : 15000 + seed % 10000;
+  // Financially active avatars spend at least 80% of the routine at work.
+  const deskPause = active ? (longestTrip * 2 + pause) * 2 : 4500 + seed % 2500;
+  const cycle = deskPause * 2 + longestTrip * 2 + pause;
   const absolute = now + seed % Math.floor(cycle);
   const round = Math.floor(absolute / cycle);
   const routine = ((round + seed % 6) % 6 + 6) % 6;
   const activity: SocialArea = activities[routine];
-  const points = routes[routine];
+  const points = routes[routine], trip = trips[routine];
   const t = ((absolute % cycle) + cycle) % cycle;
   if (t < deskPause || t >= deskPause + trip * 2 + pause) return atDesk;
   if (t >= deskPause + trip && t < deskPause + trip + pause) {
@@ -117,21 +133,52 @@ export function traderPose(status: string, now: number, id: string, reducedMotio
 /** A clearly labeled decorative colleague, NOT an EA identity or chat telemetry. */
 export function officeCoworkers(stations: readonly {id:string;status:string}[],layout: ReturnType<typeof layoutScene>,now:number,reducedMotion:boolean) {
   if(reducedMotion || layout.stations.length < 2)return [];
-  const visitor=layout.stations.find(d=>stations.some(s=>s.id===d.id&&s.status==='AGUARDANDO')&&traderPose('AGUARDANDO',now,d.id,false,d,layout).activity==='chat');
+  const visitor=layout.stations.find(d=>{
+    const status=stations.find(s=>s.id===d.id)?.status;
+    return status && avatarVisible(status) && traderPose(status,now,d.id,false,d,layout).activity==='chat';
+  });
   if(!visitor)return [];
-  const p=traderPose('AGUARDANDO',now,visitor.id,false,visitor,layout);
+  const status=stations.find(s=>s.id===visitor.id)!.status;
+  const p=traderPose(status,now,visitor.id,false,visitor,layout);
   return [{id:'decor-colleague',name:'COLEGA VISUAL',decorative:true,visitorId:visitor.id,
     x:visitor.x+p.x+72,y:visitor.y+p.y,pose:{...atDesk,facing:'left' as const,activity:'chat' as const}}];
 }
-/** Dog stays in its lounge and responds only to an actually rendered waiting visitor. */
+/** Decorative dog patrols the clear lounge aisle, then rests; never signals EA activity. */
 export function dogPose(stations: readonly {id:string;status:string}[],layout: ReturnType<typeof layoutScene>,now:number,reducedMotion:boolean) {
-  const visitor=reducedMotion?undefined:layout.stations.find(d=>{
-    const status=stations.find(s=>s.id===d.id)?.status;
-    return status==='AGUARDANDO'&&traderPose(status,now,d.id,false,d,layout).activity==='dog';
-  });
-  return {...layout.dogHome,visitorId:visitor?.id??null,
-    facing:'left' as const, wag:reducedMotion?0:Math.sin(now/(visitor?100:350))* (visitor?8:2),
-    bounce:visitor?Math.max(0,Math.sin(now/280))*3:0};
+  const home = layout.dogHome;
+  if (reducedMotion) return {...home, visitorId:null, facing:'left' as const, wag:0, bounce:0, walking:false, stride:0};
+  const statuses = new Map(stations.map(s=>[s.id,s.status]));
+  // Leave upwards before turning: the sofa and water bowl are below/right
+  // of home. Every blended offset stays in this furniture-free aisle, with
+  // at most 100 grid units upwards so the silhouette also clears room walls.
+  const offsets = [iso(0,0),iso(-25,-100),iso(-70,-100),iso(-65,-80),iso(0,0)];
+  const positionAt = (time: number) => {
+    let visitorId: string | null = null, clearance = 1;
+    for (const desk of layout.stations) {
+      const status = statuses.get(desk.id);
+      if (!status || !avatarVisible(status)) continue;
+      const pose = traderPose(status,time,desk.id,false,desk,layout);
+      if (pose.activity === 'dog') visitorId ??= desk.id;
+      // Ease back before the hand reaches the petting spot; no arrival teleport.
+      const distance = Math.hypot(desk.x+pose.x-(home.x-48),desk.y+pose.y-(home.y-5));
+      const f = Math.min(1,Math.max(0,(distance-60)/300));
+      clearance = Math.min(clearance,f*f*(3-2*f));
+    }
+    const phase = ((time % 30000)+30000)%30000;
+    const patrol = along(offsets,Math.min(1,phase/18000));
+    return {x:home.x+patrol.point.x*clearance,y:home.y+patrol.point.y*clearance,visitorId};
+  };
+  const point = positionAt(now), before = positionAt(now-1), after = positionAt(now+1);
+  // The clearance blend can reverse or move the dog even when the raw patrol
+  // says otherwise. Derive body language from the actual rendered trajectory.
+  const vx = (after.x-before.x)/2, vy = (after.y-before.y)/2;
+  const walking = Math.hypot(vx,vy) > 1e-6;
+  const visitorId = point.visitorId;
+  const stride = walking ? Math.sin(now/125)*3 : 0;
+  return {...point,
+    facing:walking && vx > 0 ? 'right' as const : 'left' as const,
+    walking, stride, wag:Math.sin(now/(visitorId?100:350))*(visitorId?8:walking?5:2),
+    bounce:visitorId?Math.max(0,Math.sin(now/280))*3:walking?Math.abs(stride)*.3:0};
 }
 /** Avatar targeting follows its visual position; no backend mutation or fake presence. */
 export function hitAgent(pointer: Point, stations: readonly { id: string; status: string }[],
