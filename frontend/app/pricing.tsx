@@ -177,7 +177,7 @@ export default function PricingScreen() {
               <Text className="text-accent font-semibold">Já tenho conta → Entrar</Text>
             </Pressable>
           ) : (
-            <Pressable onPress={() => router.push("/(tabs)/trading")}>
+            <Pressable onPress={() => router.push("/(tabs)/profile")}>
               <Text className="text-accent font-semibold">← Voltar ao painel</Text>
             </Pressable>
           )}

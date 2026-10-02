@@ -43,17 +43,16 @@ export default function TabLayout() {
           }}
         />
         <Tabs.Screen
-          name="trading"
-          options={{
-            title: "Painel",
-            tabBarIcon: ({ color }) => <TabBarIcon name="pulse" color={color} />,
-          }}
-        />
-        <Tabs.Screen
           name="trades"
           options={{
             title: "Trades",
             tabBarIcon: ({ color }) => <TabBarIcon name="stats-chart" color={color} />,
+          }}
+        />
+        <Tabs.Screen
+          name="trading"
+          options={{
+            href: null,
           }}
         />
         <Tabs.Screen
